@@ -1,0 +1,221 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2299.6">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica; min-height: 14.0px}
+  </style>
+</head>
+<body>
+<p class="p1">&lt;!DOCTYPE html&gt;</p>
+<p class="p1">&lt;html lang="en"&gt;</p>
+<p class="p1">&lt;head&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta charset="UTF-8"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;title&gt;Night Club Table Booking&lt;/title&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;link rel="stylesheet" href="styles.css"&gt;</p>
+<p class="p1">&lt;/head&gt;</p>
+<p class="p1">&lt;body&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div class="container" id="auth-container"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;h2&gt;Night Club Booking&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div id="register-form" class="form-group"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label for="reg-email"&gt;Email&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;input type="email" id="reg-email"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label for="reg-password"&gt;Password&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;input type="password" id="reg-password"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;button class="professional-button" onclick="register()"&gt;Register&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="nav"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;a href="#" onclick="showLogin()"&gt;Already have an account? Login&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div id="login-form" class="form-group" style="display: none;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label for="login-email"&gt;Email&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;input type="email" id="login-email"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label for="login-password"&gt;Password&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;input type="password" id="login-password"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;button class="professional-button" onclick="login()"&gt;Login&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="nav"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;a href="#" onclick="showRegister()"&gt;Don't have an account? Register&lt;/a&gt; |<span class="Apple-converted-space"> </span></p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;a href="#" onclick="showForgetPassword()"&gt;Forgot Password&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div id="forget-password-form" class="form-group" style="display: none;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;label for="forget-email"&gt;Email&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;input type="email" id="forget-email"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;button class="professional-button" onclick="forgetPassword()"&gt;Reset Password&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="nav"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;a href="#" onclick="showLogin()"&gt;Back to Login&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div class="container" id="booking-container" style="display: none;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;h2&gt;Select a Table&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="layout"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="stage"&gt;DJ Stage&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="entry"&gt;Entry&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="exit"&gt;Exit&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table super-vip" id="table-1" style="top: 10px; left: 20px;" onclick="selectTable(1, 'Super VIP')"&gt;S1&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table super-vip" id="table-2" style="top: 10px; right: 20px;" onclick="selectTable(2, 'Super VIP')"&gt;S2&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table vip" id="table-3" style="top: 60px; left: 60px;" onclick="selectTable(3, 'VIP')"&gt;V1&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table vip" id="table-4" style="top: 60px; left: 140px;" onclick="selectTable(4, 'VIP')"&gt;V2&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table vip" id="table-5" style="top: 60px; right: 140px;" onclick="selectTable(5, 'VIP')"&gt;V3&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table vip" id="table-6" style="top: 60px; right: 60px;" onclick="selectTable(6, 'VIP')"&gt;V4&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-7" style="top: 150px; left: 40px;" onclick="selectTable(7, 'Normal')"&gt;N1&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-8" style="top: 150px; left: 120px;" onclick="selectTable(8, 'Normal')"&gt;N2&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-9" style="top: 150px; right: 120px;" onclick="selectTable(9, 'Normal')"&gt;N3&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-10" style="top: 150px; right: 40px;" onclick="selectTable(10, 'Normal')"&gt;N4&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-11" style="top: 240px; left: 60px;" onclick="selectTable(11, 'Normal')"&gt;N5&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-12" style="top: 240px; left: 140px;" onclick="selectTable(12, 'Normal')"&gt;N6&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-13" style="top: 240px; right: 140px;" onclick="selectTable(13, 'Normal')"&gt;N7&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-14" style="top: 240px; right: 60px;" onclick="selectTable(14, 'Normal')"&gt;N8&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-15" style="top: 330px; left: 40px;" onclick="selectTable(15, 'Normal')"&gt;N9&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-16" style="top: 330px; left: 120px;" onclick="selectTable(16, 'Normal')"&gt;N10&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-17" style="top: 330px; right: 120px;" onclick="selectTable(17, 'Normal')"&gt;N11&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="table normal" id="table-18" style="top: 330px; right: 40px;" onclick="selectTable(18, 'Normal')"&gt;N12&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="total-price" id="total-price"&gt;Total Price: $0&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;button class="professional-button" id="cancel-booking-button" onclick="cancelBooking()"&gt;Cancel Booking&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="nav"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;a href="#" onclick="logout()"&gt;Logout&lt;/a&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;!-- Payment Modal --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div id="paymentModal" class="modal"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="modal-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="modal-header"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h2&gt;Payment Information&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span class="modal-close" onclick="closePaymentModal()"&gt;&amp;times;&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="form-group"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;label for="card-number"&gt;Card Number&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;input type="text" id="card-number"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="form-group"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;label for="expiry-date"&gt;Expiry Date&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;input type="text" id="expiry-date"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="form-group"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;label for="cvv"&gt;CVV&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;input type="text" id="cvv"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;button class="professional-button" onclick="makePayment()"&gt;Make Payment&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;!-- The Modal --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div id="drinkModal" class="modal"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="modal-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="modal-header"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;h2&gt;Select Additional Drinks&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;span class="modal-close" onclick="closeModal()"&gt;&amp;times;&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="drink-options"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="form-group"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;label for="drink-select"&gt;Choose a drink:&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;select id="drink-select"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;option value="0"&gt;None&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;option value="5"&gt;Coke ($5)&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;option value="5"&gt;Sprite ($5)&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;option value="20"&gt;Vodka ($20)&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;option value="30"&gt;Whiskey ($30)&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;option value="10"&gt;Cocktail ($10)&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;option value="5"&gt;Mixer ($5)&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;option value="2"&gt;Ice ($2)&lt;/option&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/select&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;button class="professional-button" onclick="addDrink()"&gt;Add Drink&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="form-group"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;label for="drink-package-select"&gt;Choose a drink package:&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;div id="drink-package-select" class="drink-package"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;!-- Drink packages will be inserted here --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;button class="professional-button" onclick="addDrinkPackage()"&gt;Add Drink Package&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div id="selected-drinks"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="form-group"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;label for="customer-name"&gt;Customer Name&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;input type="text" id="customer-name"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;div class="form-group"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;label for="contact-number"&gt;Contact Number&lt;/label&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;input type="text" id="contact-number"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;button class="professional-button" onclick="showOrderSummary()"&gt;Confirm Order&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;!-- Order Summary Modal --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div id="orderSummaryModal" class="order-summary-modal"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="order-summary-modal-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;h2&gt;Order Summary&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div class="total-price" id="order-summary-price"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;div id="order-details"&gt;&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;button class="professional-button" onclick="proceedToPayment()"&gt;Proceed to Payment&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;button class="professional-button" onclick="closeOrderSummaryModal()"&gt;Close&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;!-- Confirmation Modal --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div id="confirmationModal" class="confirmation-modal"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="confirmation-modal-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;h2&gt;Booking Confirmed&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;p&gt;Congratulations &lt;span id="customer-name-confirmation"&gt;&lt;/span&gt;!&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;p&gt;Thank you for your booking!&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;p&gt;Booking Confirmation Number: &lt;span id="confirmation-number"&gt;&lt;/span&gt;&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;p&gt;Scan the QR code below for your booking details.&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;img src="https://via.placeholder.com/150" alt="QR Code"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;button class="professional-button" onclick="closeConfirmationModal()"&gt;Close&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;!-- Alert Modal --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div id="alertModal" class="alert-modal"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;div class="alert-modal-content"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;p id="alertMessage"&gt;&lt;/p&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;button class="professional-button" onclick="closeAlertModal()"&gt;Close&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;!-- Embedded XML for Data Storage --&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;xml id="appData" style="display: none;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Users&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;!-- Example user</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;User&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;Email&gt;example@example.com&lt;/Email&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;Password&gt;password123&lt;/Password&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/User&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>--&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Users&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;Bookings&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;!-- Example booking</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;Booking&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;TableNumber&gt;1&lt;/TableNumber&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;Category&gt;Super VIP&lt;/Category&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;Price&gt;500&lt;/Price&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;Drinks&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;Drink&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;Name&gt;Vodka&lt;/Name&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                        </span>&lt;Price&gt;20&lt;/Price&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;/Drink&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/Drinks&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;Customer&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;Name&gt;John Doe&lt;/Name&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                    </span>&lt;Contact&gt;1234567890&lt;/Contact&gt;</p>
+<p class="p1"><span class="Apple-converted-space">                </span>&lt;/Customer&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>&lt;/Booking&gt;</p>
+<p class="p1"><span class="Apple-converted-space">            </span>--&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>&lt;/Bookings&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/xml&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;script src="scripts.js"&gt;&lt;/script&gt;</p>
+<p class="p1">&lt;/body&gt;</p>
+<p class="p1">&lt;/html&gt;</p>
+</body>
+</html>

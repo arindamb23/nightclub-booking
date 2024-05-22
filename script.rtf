@@ -1,0 +1,367 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2709
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\paperw11900\paperh16840\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 let selectedTablePrice = 0;\
+let selectedDrinksTotal = 0;\
+let selectedTable = '';\
+let bookedTables = \{\};\
+\
+const drinkPackages = [\
+    \{\
+        name: 'Package 1 - 2 Champagnes, 2 Whiskeys',\
+        price: 200,\
+        image: 'https://via.placeholder.com/50?text=Pkg1'\
+    \},\
+    \{\
+        name: 'Package 2 - 4 Champagnes, 4 Whiskeys',\
+        price: 400,\
+        image: 'https://via.placeholder.com/50?text=Pkg2'\
+    \},\
+    \{\
+        name: 'Package 1 - 2 Vodkas, 2 Cocktails',\
+        price: 150,\
+        image: 'https://via.placeholder.com/50?text=Pkg3'\
+    \},\
+    \{\
+        name: 'Package 2 - 4 Vodkas, 4 Cocktails',\
+        price: 300,\
+        image: 'https://via.placeholder.com/50?text=Pkg4'\
+    \},\
+    \{\
+        name: 'Package 1 - 5 Cokes, 5 Sprites',\
+        price: 50,\
+        image: 'https://via.placeholder.com/50?text=Pkg5'\
+    \},\
+    \{\
+        name: 'Package 2 - 3 Vodkas, 3 Whiskeys',\
+        price: 120,\
+        image: 'https://via.placeholder.com/50?text=Pkg6'\
+    \}\
+];\
+\
+function showRegister() \{\
+    document.getElementById('register-form').style.display = 'block';\
+    document.getElementById('login-form').style.display = 'none';\
+    document.getElementById('forget-password-form').style.display = 'none';\
+\}\
+\
+function showLogin() \{\
+    document.getElementById('register-form').style.display = 'none';\
+    document.getElementById('login-form').style.display = 'block';\
+    document.getElementById('forget-password-form').style.display = 'none';\
+\}\
+\
+function showForgetPassword() \{\
+    document.getElementById('register-form').style.display = 'none';\
+    document.getElementById('login-form').style.display = 'none';\
+    document.getElementById('forget-password-form').style.display = 'block';\
+\}\
+\
+function register() \{\
+    const email = document.getElementById('reg-email').value;\
+    const password = document.getElementById('reg-password').value;\
+    if (email && password) \{\
+        const users = document.querySelector('#appData Users');\
+        const user = document.createElement('User');\
+        const userEmail = document.createElement('Email');\
+        userEmail.textContent = email;\
+        const userPassword = document.createElement('Password');\
+        userPassword.textContent = password;\
+        user.appendChild(userEmail);\
+        user.appendChild(userPassword);\
+        users.appendChild(user);\
+        showAlert('Registration successful');\
+        showLogin();\
+    \} else \{\
+        showAlert('Please fill all fields');\
+    \}\
+\}\
+\
+function login() \{\
+    const email = document.getElementById('login-email').value;\
+    const password = document.getElementById('login-password').value;\
+    const users = document.querySelectorAll('#appData Users User');\
+    let userFound = false;\
+    users.forEach(user => \{\
+        const userEmail = user.querySelector('Email').textContent;\
+        const userPassword = user.querySelector('Password').textContent;\
+        if (userEmail === email && userPassword === password) \{\
+            userFound = true;\
+        \}\
+    \});\
+    if (userFound) \{\
+        showAlert('Login successful', true);\
+        document.getElementById('login-email').value = '';\
+        document.getElementById('login-password').value = '';\
+    \} else \{\
+        showAlert('Invalid credentials');\
+    \}\
+\}\
+\
+function forgetPassword() \{\
+    const email = document.getElementById('forget-email').value;\
+    const users = document.querySelectorAll('#appData Users User');\
+    let userFound = false;\
+    users.forEach(user => \{\
+        const userEmail = user.querySelector('Email').textContent;\
+        if (userEmail === email) \{\
+            userFound = true;\
+        \}\
+    \});\
+    if (userFound) \{\
+        showAlert('Password reset link sent to your email');\
+        showLogin();\
+    \} else \{\
+        showAlert('Email not registered');\
+    \}\
+\}\
+\
+function selectTable(tableNumber, category) \{\
+    if (bookedTables[tableNumber]) \{\
+        showAlert('Table already booked');\
+        return;\
+    \}\
+\
+    const tables = document.querySelectorAll('.table');\
+    tables.forEach(table => table.classList.remove('selected'));\
+    const selectedTableElement = document.getElementById(`table-$\{tableNumber\}`);\
+    selectedTableElement.classList.add('selected');\
+    selectedTable = tableNumber;\
+    let availablePackages = [];\
+    switch (category) \{\
+        case 'Super VIP':\
+            selectedTablePrice = 500;\
+            availablePackages = drinkPackages.slice(0, 2);\
+            break;\
+        case 'VIP':\
+            selectedTablePrice = 300;\
+            availablePackages = drinkPackages.slice(2, 4);\
+            break;\
+        case 'Normal':\
+            selectedTablePrice = 150;\
+            availablePackages = drinkPackages.slice(4, 6);\
+            break;\
+    \}\
+    updateDrinkPackages(availablePackages);\
+    updateTotalPrice();\
+    document.getElementById('drinkModal').style.display = 'block';\
+\}\
+\
+function updateDrinkPackages(packages) \{\
+    const drinkPackageSelect = document.getElementById('drink-package-select');\
+    drinkPackageSelect.innerHTML = '';\
+    packages.forEach(pkg => \{\
+        const div = document.createElement('div');\
+        div.classList.add('drink-package');\
+        div.innerHTML = `\
+            <img src="$\{pkg.image\}" alt="$\{pkg.name\}">\
+            <span>$\{pkg.name\} ($$\{pkg.price\})</span>\
+            <input type="radio" name="drink-package" value="$\{pkg.price\}" data-name="$\{pkg.name\}">\
+        `;\
+        drinkPackageSelect.appendChild(div);\
+    \});\
+\}\
+\
+function addDrink() \{\
+    const drinkSelect = document.getElementById('drink-select');\
+    const drinkPrice = parseInt(drinkSelect.value);\
+    const drinkText = drinkSelect.options[drinkSelect.selectedIndex].text;\
+    if (drinkPrice > 0) \{\
+        const selectedDrinksDiv = document.getElementById('selected-drinks');\
+        const newDrink = document.createElement('div');\
+        newDrink.innerText = drinkText;\
+        selectedDrinksDiv.appendChild(newDrink);\
+        selectedDrinksTotal += drinkPrice;\
+        updateTotalPrice();\
+    \}\
+\}\
+\
+function addDrinkPackage() \{\
+    const selectedPackage = document.querySelector('input[name="drink-package"]:checked');\
+    if (selectedPackage) \{\
+        const drinkPackagePrice = parseInt(selectedPackage.value);\
+        const drinkPackageText = selectedPackage.dataset.name;\
+        const selectedDrinksDiv = document.getElementById('selected-drinks');\
+        const newDrinkPackage = document.createElement('div');\
+        newDrinkPackage.innerText = `$\{drinkPackageText\} ($$\{drinkPackagePrice\})`;\
+        selectedDrinksDiv.appendChild(newDrinkPackage);\
+        selectedDrinksTotal += drinkPackagePrice;\
+        updateTotalPrice();\
+    \}\
+\}\
+\
+function updateTotalPrice() \{\
+    const totalPrice = selectedTablePrice + selectedDrinksTotal;\
+    document.getElementById('total-price').innerText = `Total Price: $$\{totalPrice\}`;\
+    document.getElementById('order-summary-price').innerText = `Total Price: $$\{totalPrice\}`;\
+\}\
+\
+function openModal(event) \{\
+    event.stopPropagation(); // Prevent table selection\
+    document.getElementById('drinkModal').style.display = 'block';\
+\}\
+\
+function closeModal() \{\
+    document.getElementById('drinkModal').style.display = 'none';\
+\}\
+\
+function showOrderSummary() \{\
+    const customerName = document.getElementById('customer-name').value;\
+    const contactNumber = document.getElementById('contact-number').value;\
+    if (selectedTablePrice > 0 && customerName && contactNumber) \{\
+        const orderDetailsDiv = document.getElementById('order-details');\
+        orderDetailsDiv.innerHTML = `\
+            <p>Table: $\{selectedTable\}</p>\
+            <p>Customer Name: $\{customerName\}</p>\
+            <p>Contact Number: $\{contactNumber\}</p>\
+            <p>Drinks: </p>\
+        `;\
+        const selectedDrinks = document.querySelectorAll('#selected-drinks div');\
+        selectedDrinks.forEach(drink => \{\
+            const drinkDetail = document.createElement('p');\
+            drinkDetail.innerText = drink.textContent;\
+            orderDetailsDiv.appendChild(drinkDetail);\
+        \});\
+        document.getElementById('drinkModal').style.display = 'none';\
+        document.getElementById('orderSummaryModal').style.display = 'block';\
+    \} else \{\
+        showAlert('Please fill all fields and select a table to book');\
+    \}\
+\}\
+\
+function proceedToPayment() \{\
+    document.getElementById('orderSummaryModal').style.display = 'none';\
+    document.getElementById('paymentModal').style.display = 'block';\
+\}\
+\
+function makePayment() \{\
+    const cardNumber = document.getElementById('card-number').value;\
+    const expiryDate = document.getElementById('expiry-date').value;\
+    const cvv = document.getElementById('cvv').value;\
+    const customerName = document.getElementById('customer-name').value;\
+    const contactNumber = document.getElementById('contact-number').value;\
+    if (cardNumber && expiryDate && cvv) \{\
+        bookedTables[selectedTable] = true;\
+        const bookings = document.querySelector('#appData Bookings');\
+        const booking = document.createElement('Booking');\
+        const tableNum = document.createElement('TableNumber');\
+        tableNum.textContent = selectedTable;\
+        const category = document.createElement('Category');\
+        category.textContent = selectedTablePrice === 500 ? 'Super VIP' : selectedTablePrice === 300 ? 'VIP' : 'Normal';\
+        const price = document.createElement('Price');\
+        price.textContent = selectedTablePrice;\
+\
+        const drinks = document.createElement('Drinks');\
+        const selectedDrinks = document.querySelectorAll('#selected-drinks div');\
+        selectedDrinks.forEach(drink => \{\
+            const drinkName = drink.textContent.split(' (')[0];\
+            const drinkPrice = parseInt(drink.textContent.match(/\\$(\\d+)/)[1]);\
+            const drinkElem = document.createElement('Drink');\
+            const drinkElemName = document.createElement('Name');\
+            drinkElemName.textContent = drinkName;\
+            const drinkElemPrice = document.createElement('Price');\
+            drinkElemPrice.textContent = drinkPrice;\
+            drinkElem.appendChild(drinkElemName);\
+            drinkElem.appendChild(drinkElemPrice);\
+            drinks.appendChild(drinkElem);\
+        \});\
+\
+        const customer = document.createElement('Customer');\
+        const custName = document.createElement('Name');\
+        custName.textContent = customerName;\
+        const custContact = document.createElement('Contact');\
+        custContact.textContent = contactNumber;\
+        customer.appendChild(custName);\
+        customer.appendChild(custContact);\
+\
+        booking.appendChild(tableNum);\
+        booking.appendChild(category);\
+        booking.appendChild(price);\
+        booking.appendChild(drinks);\
+        booking.appendChild(customer);\
+        bookings.appendChild(booking);\
+\
+        document.getElementById(`table-$\{selectedTable\}`).classList.add('booked');\
+        document.getElementById(`table-$\{selectedTable\}`).classList.remove('selected');\
+        document.getElementById(`table-$\{selectedTable\}`).innerText += " B";\
+        document.getElementById('paymentModal').style.display = 'none';\
+        document.getElementById('confirmationModal').style.display = 'block';\
+        document.getElementById('confirmation-number').innerText = generateConfirmationNumber();\
+        document.getElementById('customer-name-confirmation').innerText = customerName;\
+        document.getElementById('cancel-booking-button').style.display = 'block';\
+    \} else \{\
+        showAlert('Please fill in all payment details');\
+    \}\
+\}\
+\
+function generateConfirmationNumber() \{\
+    return 'NCB' + Math.floor(Math.random() * 1000000);\
+\}\
+\
+function closePaymentModal() \{\
+    document.getElementById('paymentModal').style.display = 'none';\
+    document.getElementById('booking-container').style.display = 'block';\
+\}\
+\
+function closeConfirmationModal() \{\
+    document.getElementById('confirmationModal').style.display = 'none';\
+    logout();\
+\}\
+\
+function cancelBooking() \{\
+    if (selectedTable && bookedTables[selectedTable]) \{\
+        delete bookedTables[selectedTable];\
+        const tableElement = document.getElementById(`table-$\{selectedTable\}`);\
+        tableElement.classList.remove('booked');\
+        tableElement.classList.add('normal');\
+        tableElement.innerText = tableElement.innerText.replace(" B", "");\
+        const bookings = document.querySelector('#appData Bookings');\
+        const booking = Array.from(bookings.children).find(b => b.querySelector('TableNumber').textContent == selectedTable);\
+        if (booking) bookings.removeChild(booking);\
+        selectedTable = '';\
+        showAlert('Booking canceled successfully');\
+    \} else \{\
+        showAlert('No booking to cancel');\
+    \}\
+\}\
+\
+function logout() \{\
+    document.getElementById('auth-container').style.display = 'block';\
+    document.getElementById('booking-container').style.display = 'none';\
+    document.getElementById('selected-drinks').innerHTML = '';\
+    selectedTablePrice = 0;\
+    selectedDrinksTotal = 0;\
+    updateTotalPrice();\
+    showLogin();\
+    const loginEmail = document.getElementById('login-email');\
+    const loginPassword = document.getElementById('login-password');\
+    if (loginEmail && loginPassword) \{\
+        loginEmail.value = '';\
+        loginPassword.value = '';\
+    \}\
+\}\
+\
+function showAlert(message, isLoginSuccess = false) \{\
+    document.getElementById('alertMessage').innerText = message;\
+    document.getElementById('alertModal').style.display = 'block';\
+    if (isLoginSuccess) \{\
+        setTimeout(() => \{\
+            document.getElementById('alertModal').style.display = 'none';\
+            document.getElementById('auth-container').style.display = 'none';\
+            document.getElementById('booking-container').style.display = 'block';\
+        \}, 2000);\
+    \}\
+\}\
+\
+function closeAlertModal() \{\
+    document.getElementById('alertModal').style.display = 'none';\
+\}\
+\
+function closeOrderSummaryModal() \{\
+    document.getElementById('orderSummaryModal').style.display = 'none';\
+\}\
+}
