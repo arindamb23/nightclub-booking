@@ -15,7 +15,8 @@ from app.services.workflows import WorkflowError
 
 router = APIRouter(prefix="/api", tags=["runs"])
 
-UPLOAD_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".mp4", ".webm", ".mov", ".mkv", ".avi"}
+UPLOAD_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".mp4", ".webm", ".mov", ".mkv", ".avi",
+               ".wav", ".mp3", ".flac", ".ogg", ".m4a"}
 
 
 class RunIn(BaseModel):
@@ -95,7 +96,7 @@ async def upload_input(file: UploadFile = File(...)):
     name = Path(file.filename or "input.png").name
     ext = Path(name).suffix.lower()
     if ext not in UPLOAD_EXTS:
-        raise HTTPException(400, f"Unsupported file type '{ext}'. Use an image or video file.")
+        raise HTTPException(400, f"Unsupported file type '{ext}'. Use an image, video or audio file.")
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", Path(name).stem)[:60] or "input"
     stored = f"{safe}_{uuid.uuid4().hex[:6]}{ext}"
     (uploads_dir() / stored).write_bytes(await file.read())

@@ -53,7 +53,7 @@ export default function Workflows() {
       key: 'name', header: 'Workflow', width: '30%',
       render: (r) => (
         <>
-          <div className="cell-main"><Link to={`/workflows/${r.id}/wizard?step=2`}>{r.name}</Link></div>
+          <div className="cell-main"><Link to={`/workflows/${r.id}/editor`}>{r.name}</Link></div>
           <div className="cell-sub">{r.source_filename}</div>
         </>
       ),
@@ -74,6 +74,7 @@ export default function Workflows() {
       key: 'actions', header: '', className: 'col-actions',
       render: (r) => (
         <div className="actions">
+          <button className="btn btn-sm" onClick={() => navigate(`/workflows/${r.id}/editor`)}><Icon name="sliders" size={15} />Editor</button>
           <button className="btn btn-sm" onClick={() => navigate(`/workflows/${r.id}/wizard?step=2`)}><Icon name="box" size={15} />Models</button>
           <button className="btn btn-sm btn-primary" onClick={() => navigate(`/workflows/${r.id}/wizard?step=3`)}><Icon name="play" size={12} />Run</button>
           <button className="btn btn-ghost icon-btn" onClick={() => setCode(r)} aria-label={`View script of ${r.name}`}><Icon name="code" size={16} /></button>

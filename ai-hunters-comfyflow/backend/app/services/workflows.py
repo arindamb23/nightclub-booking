@@ -55,15 +55,6 @@ CLASS_INPUT_CATEGORY = {
     ("ImageOnlyCheckpointLoader", "ckpt_name"): "checkpoints",
 }
 
-TEXT_INPUTS = {"text", "prompt", "positive", "negative", "positive_prompt", "negative_prompt", "text_g", "text_l", "caption"}
-NUMBER_INPUTS = {
-    "seed", "noise_seed", "steps", "cfg", "denoise", "width", "height", "length", "batch_size",
-    "guidance", "shift", "fps", "frame_rate", "megapixels", "num_frames", "strength", "lora_strength",
-    "strength_model", "strength_clip",
-}
-SEED_INPUTS = {"seed", "noise_seed"}
-MEDIA_LOADERS = {"LoadImage": "image", "LoadImageMask": "image", "LoadImageOutput": "image"}
-
 _lock = threading.Lock()
 
 
@@ -533,44 +524,3 @@ def resolve_rows(detected: List[Dict[str, Any]], items: List[Dict[str, Any]]) ->
             raise WorkflowError(str(e)) from e
         downloader.clear(original, *[n for n, r in rows.items() if r["registry_name"] == original])
     return []
-
-
-# ----------------------------------------------------------------- params
-def parameters(wid: str) -> List[Dict[str, Any]]:
-    """Editable inputs shown in the Run step (prompts, seed, sizes, input media)."""
-    prompt = _prompt(wid)
-    params: List[Dict[str, Any]] = []
-    for node_id, node in prompt.items():
-        ctype = node.get("class_type", "")
-        title = (node.get("_meta") or {}).get("title") or ctype
-        for input_name, value in (node.get("inputs") or {}).items():
-            if isinstance(value, list):
-                continue  # link
-            kind = None
-            if ctype in MEDIA_LOADERS and input_name == MEDIA_LOADERS[ctype]:
-                kind = "image"
-            elif "LoadVideo" in ctype and input_name == "video":
-                kind = "video"
-            elif input_name in TEXT_INPUTS and isinstance(value, str):
-                kind = "text"
-            elif input_name == "filename_prefix" and isinstance(value, str):
-                kind = "string"
-            elif input_name in NUMBER_INPUTS and isinstance(value, (int, float)) and not isinstance(value, bool):
-                kind = "seed" if input_name in SEED_INPUTS else "number"
-            if kind:
-                params.append({
-                    "node_id": node_id,
-                    "class_type": ctype,
-                    "title": title,
-                    "input": input_name,
-                    "kind": kind,
-                    "value": value,
-                    "is_float": isinstance(value, float),
-                })
-    order = {"image": 0, "video": 0, "text": 1, "seed": 2, "number": 3, "string": 4}
-    def text_rank(p):
-        t = f'{p["title"]} {p["input"]}'.lower()
-        return 2 if "neg" in t else 0 if "pos" in t else 1
-
-    params.sort(key=lambda p: (order[p["kind"]], text_rank(p) if p["kind"] == "text" else 0, p["title"], p["input"]))
-    return params

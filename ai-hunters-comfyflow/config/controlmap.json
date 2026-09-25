@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "_help": [
+    "Decides how every node input is shown in the Workflow Editor and on the Run screen.",
+    "Order of precedence: per-workflow choice in the editor > 'nodes' (exact class) > 'patterns' (first match) > the node's ComfyUI definition.",
+    "control: upload_image | upload_video | upload_audio | prompt | seed | number | select | toggle | text | string",
+    "runtime: true = shown on the Run screen by default (the user can untick it per workflow).",
+    "role: input | prompt | model | generate | output   (colour + grouping on the canvas)",
+    "output: image | video | audio   (expected output of an output node)",
+    "Patterns: class_name / input_name use * wildcards and | for alternatives (case-insensitive); input_flag matches ComfyUI upload flags; type matches the input type."
+  ],
+  "nodes": {
+    "LoadImage":            { "role": "input",  "icon": "image", "inputs": { "image": { "control": "upload_image", "runtime": true, "label": "Input image" } } },
+    "LoadImageMask":        { "role": "input",  "icon": "image", "inputs": { "image": { "control": "upload_image", "runtime": true, "label": "Mask image" } } },
+    "LoadImageOutput":      { "role": "input",  "icon": "image", "inputs": { "image": { "control": "upload_image", "runtime": true, "label": "Input image" } } },
+    "LoadVideo":            { "role": "input",  "icon": "film",  "inputs": { "file":  { "control": "upload_video", "runtime": true, "label": "Input video" } } },
+    "VHS_LoadVideo":        { "role": "input",  "icon": "film",  "inputs": { "video": { "control": "upload_video", "runtime": true, "label": "Input video" } } },
+    "VHS_LoadVideoFFmpeg":  { "role": "input",  "icon": "film",  "inputs": { "video": { "control": "upload_video", "runtime": true, "label": "Input video" } } },
+    "LoadAudio":            { "role": "input",  "icon": "audio", "inputs": { "audio": { "control": "upload_audio", "runtime": true, "label": "Input audio" } } },
+    "VHS_LoadAudioUpload":  { "role": "input",  "icon": "audio", "inputs": { "audio": { "control": "upload_audio", "runtime": true, "label": "Input audio" } } },
+
+    "CLIPTextEncode":       { "role": "prompt", "icon": "edit",  "inputs": { "text": { "control": "prompt", "runtime": true } } },
+    "CLIPTextEncodeSDXL":   { "role": "prompt", "icon": "edit",  "inputs": { "text_g": { "control": "prompt", "runtime": true }, "text_l": { "control": "prompt", "runtime": true } } },
+    "CLIPTextEncodeFlux":   { "role": "prompt", "icon": "edit",  "inputs": { "clip_l": { "control": "prompt", "runtime": true }, "t5xxl": { "control": "prompt", "runtime": true } } },
+    "TextEncodeQwenImageEdit": { "role": "prompt", "icon": "edit", "inputs": { "prompt": { "control": "prompt", "runtime": true } } },
+
+    "KSampler":             { "role": "generate", "icon": "sparkle", "summary": ["sampler_name", "steps", "cfg"] },
+    "KSamplerAdvanced":     { "role": "generate", "icon": "sparkle", "summary": ["sampler_name", "steps", "cfg"] },
+    "SamplerCustomAdvanced":{ "role": "generate", "icon": "sparkle" },
+    "EmptyLatentImage":     { "role": "generate", "icon": "box", "summary": ["width", "height", "batch_size"] },
+    "EmptySD3LatentImage":  { "role": "generate", "icon": "box", "summary": ["width", "height", "batch_size"] },
+    "EmptyHunyuanLatentVideo": { "role": "generate", "icon": "film", "summary": ["width", "height", "length"] },
+
+    "SaveImage":            { "role": "output", "icon": "image", "output": "image" },
+    "PreviewImage":         { "role": "output", "icon": "image", "output": "image" },
+    "SaveAnimatedWEBP":     { "role": "output", "icon": "film",  "output": "video" },
+    "SaveAnimatedPNG":      { "role": "output", "icon": "film",  "output": "video" },
+    "SaveWEBM":             { "role": "output", "icon": "film",  "output": "video" },
+    "SaveVideo":            { "role": "output", "icon": "film",  "output": "video" },
+    "VHS_VideoCombine":     { "role": "output", "icon": "film",  "output": "video" },
+    "SaveAudio":            { "role": "output", "icon": "audio", "output": "audio" },
+    "SaveAudioMP3":         { "role": "output", "icon": "audio", "output": "audio" },
+    "PreviewAudio":         { "role": "output", "icon": "audio", "output": "audio" }
+  },
+  "patterns": [
+    { "input_flag": "image_upload", "control": "upload_image", "runtime": true },
+    { "input_flag": "video_upload", "control": "upload_video", "runtime": true },
+    { "input_flag": "audio_upload", "control": "upload_audio", "runtime": true },
+    { "input_name": "*prompt*|text|caption|instruction", "type": "STRING", "control": "prompt", "runtime": true },
+    { "input_name": "seed|noise_seed", "control": "seed", "runtime": false },
+
+    { "class_name": "Save*|Preview*|*VideoCombine*", "role": "output" },
+    { "class_name": "Load*Image*|Load*Video*|Load*Audio*", "role": "input" },
+    { "class_name": "*Loader*|*LoaderGGUF*|*LoRA*|*Lora*", "role": "model" },
+    { "class_name": "*TextEncode*|*Prompt*", "role": "prompt" },
+    { "class_name": "*Sampler*|*Guider*|*Scheduler*|*Noise*|*Latent*", "role": "generate" }
+  ]
+}

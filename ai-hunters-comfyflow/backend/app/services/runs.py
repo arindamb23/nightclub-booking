@@ -21,7 +21,8 @@ from app.services import comfy, workflows
 from cb2c_py.lib.workflow_runner import ComfyUIError, WorkflowCancelled
 
 MAX_SEED = 2**50
-MEDIA_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".mp4", ".webm", ".mov", ".mkv", ".avi"}
+MEDIA_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".mp4", ".webm", ".mov", ".mkv", ".avi",
+              ".wav", ".mp3", ".flac", ".ogg", ".m4a"}
 
 
 class RunError(ValueError):

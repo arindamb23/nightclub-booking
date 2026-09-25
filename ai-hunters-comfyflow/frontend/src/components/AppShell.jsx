@@ -5,6 +5,7 @@ import { useSystem } from '../context/SystemContext.jsx'
 
 const TITLES = [
   ['/workflows/new', 'New workflow'],
+  ['/editor', 'Workflow editor'],
   ['/workflows/', 'Workflow wizard'],
   ['/workflows', 'Workflows'],
   ['/models', 'Model manager'],
@@ -33,7 +34,8 @@ export function ComfyStatusPill() {
 export default function AppShell({ children }) {
   const { pathname } = useLocation()
   const { system } = useSystem()
-  const title = TITLES.find(([p]) => (p === '/' ? pathname === '/' : pathname.startsWith(p)))?.[1] || ''
+  const title = TITLES.find(([p]) => (p === '/' ? pathname === '/' : p === '/editor' ? pathname.endsWith('/editor') : pathname.startsWith(p)))?.[1] || ''
+  const wide = pathname.endsWith('/editor')
   return (
     <div className="shell">
       <aside className="sidebar">
@@ -61,7 +63,7 @@ export default function AppShell({ children }) {
           <ComfyStatusPill />
           <span className="version-pill">v{__APP_VERSION__}</span>
         </header>
-        <main className="content">{children}</main>
+        <main className={`content ${wide ? 'content-wide' : ''}`}>{children}</main>
       </div>
     </div>
   )

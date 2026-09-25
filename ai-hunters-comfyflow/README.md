@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.3
+# AI Hunters ComfyFlow v1.0.4
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -45,6 +45,24 @@ Then, in the project folder:
 Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_PORT` in `.env` before running Setup.bat.
 
 ## Using the app
+
+* **Workflow editor** (*Workflows → Editor*) – the workflow as a clean node graph:
+  * cards coloured by role (Input · Prompt · Model · Generate · Output) with a one-line summary, badges for
+    run-time fields and model status, thumbnails of input media and the last result on output nodes;
+  * connections coloured by data type (legend on the canvas); drag nodes, **Auto layout**, zoom/fit, minimap,
+    **Find node**; **Simple view** folds all model loaders into one *Models* card, **Detailed view** shows every node;
+  * click a node → the **properties panel** shows every setting as the right control (text, prompt, dropdown with
+    the real options, number with its limits, switch, upload). Each setting has a **Run time** tick and a label;
+  * media is uploaded **only through the Upload dialog**; ▶ on a node opens the image preview, or the video / audio
+    player with **Play, Pause, Stop**, seek and Download;
+  * output nodes have an **Expected output** (image / video / audio);
+  * **Save** writes the values into `workflow.py` (the previous version is kept in `data\workflows\<id>\history\`)
+    and stores run-time choices, labels and node positions; **Run** opens the Run screen.
+* **Control map** – `config\controlmap.json` decides which inputs are uploads, prompts and outputs and whether they
+  are **Run time by default** (uploads and prompts are). Exact node entries first, then patterns (so custom nodes
+  with upload flags or prompt-like names are recognised too), then the node's ComfyUI definition. Edit the file to
+  change the defaults for every workflow; changes are picked up without a restart.
+* **Run screen** – shows exactly the run-time fields (with their labels and controls) and the expected outputs.
 
 * **Generate** (sidebar) – one screen for the four common jobs, each powered by a Python *template*:
 
@@ -123,6 +141,7 @@ ai-hunters-comfyflow/
 ├─ Setup.bat · Start-all.bat · Stop-all.bat · .env.example
 ├─ tools/                           portable Python/Git/Node downloaded by Setup.bat (only if missing)
 ├─ config/custom-nodes.txt          ComfyUI custom nodes installed by Setup.bat
+├─ config/controlmap.json           upload / prompt / output controls and Run-time defaults
 ├─ scripts/setup_comfyui.py         ComfyUI + PyTorch + custom-node installer
 ├─ scripts/prestart.py              registers a custom MODELS_DIR with ComfyUI
 ├─ samples/workflows/               sample library (.json + .py workflows, library.json)
@@ -139,7 +158,7 @@ ai-hunters-comfyflow/
 │  │  └─ templates/runner/          command-line runners for the templates (5) + input images
 │  ├─ json-workflows/               input folder for the command-line JSON converter
 │  ├─ tools/fake_comfyui.py         ComfyUI stand-in for tests and GPU-less demos
-│  └─ tests/                        pytest suite (52 tests)
+│  └─ tests/                        pytest suite (57 tests)
 └─ frontend/                        React 18 + Vite, light theme, modal system
    └─ src/ pages · components · context · styles/theme-light.css
 ```
@@ -151,6 +170,7 @@ ai-hunters-comfyflow/
 `GET|POST /api/models` · `DELETE /api/models/{name}` · `POST /api/models/download|download-all|cancel` ·
 `GET /api/workflows` · `POST /api/workflows/upload|import-path` · `GET|PATCH|DELETE /api/workflows/{id}` ·
 `GET /api/workflows/{id}/script|models|parameters` · `POST /api/workflows/{id}/models/download-missing|resolve` ·
+`GET|PUT /api/workflows/{id}/graph` · `GET /api/workflows/{id}/history` · `GET /api/workflows/{id}/nodes/{node}/media` ·
 `GET /api/samples` · `POST /api/samples/open` ·
 `GET /api/templates` · `POST /api/templates/upload` · `DELETE /api/templates/{id}` ·
 `POST /api/templates/{id}/models|models/resolve|models/download-missing|generate` · `GET /api/templates/sample-images[/{name}]` ·
@@ -161,7 +181,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 52 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 57 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 

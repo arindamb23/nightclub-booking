@@ -1,11 +1,11 @@
 """Workflow import (upload or local path), conversion output, models and parameters."""
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
-from app.services import workflows
+from app.services import workflows, graph
 from app.services.workflows import WorkflowError
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
@@ -115,4 +115,26 @@ def resolve_models(wid: str, body: ResolveIn):
 
 @router.get("/{wid}/parameters")
 def parameters(wid: str):
-    return {"parameters": _guard(workflows.parameters, wid)}
+    """Run-time fields (control map + editor ticks) and the expected outputs."""
+    return _guard(graph.runtime_parameters, wid)
+
+
+@router.get("/{wid}/graph")
+def get_graph(wid: str):
+    return _guard(graph.build_graph, wid)
+
+
+@router.put("/{wid}/graph")
+def save_graph(wid: str, body: Dict[str, Any]):
+    return _guard(graph.save_graph, wid, body)
+
+
+@router.get("/{wid}/history")
+def history(wid: str):
+    _guard(workflows.get, wid)
+    return {"history": graph.history(wid)}
+
+
+@router.get("/{wid}/nodes/{nid}/media")
+def node_media(wid: str, nid: str, input: str):
+    return FileResponse(_guard(graph.node_media_path, wid, nid, input))

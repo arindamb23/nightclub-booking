@@ -4,6 +4,7 @@ import Icon from '../components/Icon.jsx'
 import { ModelStatus, PageHeader, RunStatus, Spinner } from '../components/Common.jsx'
 import RunProgress, { useRunTracker } from '../components/RunProgress.jsx'
 import MissingModelsModal from '../components/MissingModelsModal.jsx'
+import UploadModal from '../components/UploadModal.jsx'
 import { Thumb, outputsToItems, usePreview } from '../components/PreviewModals.jsx'
 import { api } from '../api.js'
 import { useMessages } from '../context/MessageContext.jsx'
@@ -39,39 +40,17 @@ function mediaUrl(value) {
 }
 
 function ImageField({ param, value, onChange, samples }) {
-  const msg = useMessages()
-  const ref = useRef(null)
-  const [busy, setBusy] = useState(false)
-  const upload = async (file) => {
-    if (!file) return
-    setBusy(true)
-    try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await api.upload('/api/uploads', fd)
-      onChange({ upload: res.filename, original: res.original })
-    } catch (e) {
-      msg.showError(e)
-    } finally {
-      setBusy(false)
-    }
-  }
+  const [open, setOpen] = useState(false)
   const url = mediaUrl(value)
   return (
     <div className="field">
       <span className="label">{param.label}{!param.required && !/optional/i.test(param.label) && <span className="muted"> · optional</span>}</span>
-      <div
-        className="image-drop"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => { e.preventDefault(); upload(e.dataTransfer.files?.[0]) }}
-      >
+      <div className="image-drop">
         {url ? <img src={url} alt={param.label} /> : <div className="image-drop-empty"><Icon name="image" size={26} /></div>}
         <div className="stack" style={{ gap: 8, flex: 1, minWidth: 0 }}>
           <div className="small truncate">{value?.original || value?.sample || (value?.upload ?? 'No image selected')}</div>
           <div className="row row-wrap">
-            <button type="button" className="btn btn-sm" onClick={() => ref.current?.click()} disabled={busy}>
-              {busy ? <Spinner size={14} /> : <Icon name="upload" size={15} />}Upload image
-            </button>
+            <button type="button" className="btn btn-sm" onClick={() => setOpen(true)}><Icon name="upload" size={15} />Upload image…</button>
             {samples.map((s) => (
               <button type="button" key={s} className={`btn btn-sm btn-ghost ${value?.sample === s ? 'selected' : ''}`} onClick={() => onChange({ sample: s })}>
                 Sample: {s.replace(/\.\w+$/, '')}
@@ -79,10 +58,12 @@ function ImageField({ param, value, onChange, samples }) {
             ))}
             {!param.required && value && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onChange(null)}>Remove</button>}
           </div>
-          <span className="hint">Drop a picture here or upload one (PNG, JPG, WEBP).</span>
         </div>
-        <input ref={ref} type="file" hidden accept="image/*" onChange={(e) => upload(e.target.files?.[0])} />
       </div>
+      {open && (
+        <UploadModal kind="image" title={`Upload ${param.label.toLowerCase()}`} onClose={() => setOpen(false)}
+          onUploaded={(res) => { setOpen(false); onChange({ upload: res.filename, original: res.original }) }} />
+      )}
     </div>
   )
 }

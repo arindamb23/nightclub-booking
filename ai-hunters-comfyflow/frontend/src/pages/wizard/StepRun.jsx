@@ -9,85 +9,35 @@ import { useSystem } from '../../context/SystemContext.jsx'
 import { formatDate, formatDuration } from '../../utils/format.js'
 import MissingModelsModal from '../../components/MissingModelsModal.jsx'
 import RunProgress from '../../components/RunProgress.jsx'
+import FieldControl from '../../components/FieldControl.jsx'
+import { Link } from 'react-router-dom'
 
 const keyOf = (p) => `${p.node_id}::${p.input}`
 const MAX_SEED = 2 ** 50
 
-function MediaField({ param, value, onChange }) {
-  const msg = useMessages()
-  const ref = useRef(null)
-  const [busy, setBusy] = useState(false)
-  const upload = async (file) => {
-    if (!file) return
-    setBusy(true)
-    try {
-      const fd = new FormData()
-      fd.append('file', file)
-      const res = await api.upload('/api/uploads', fd)
-      onChange({ upload: res.filename, original: res.original })
-    } catch (e) {
-      msg.showError(e)
-    } finally {
-      setBusy(false)
-    }
-  }
-  const uploaded = value && typeof value === 'object' && value.upload
+function ParamField({ param, value, onChange, randomSeed, setRandomSeed }) {
+  const id = `p-${keyOf(param)}`
+  const wide = ['text', 'image', 'video', 'audio'].includes(param.kind)
   return (
-    <div className="media-pick">
-      {uploaded && param.kind === 'image' && <img src={`/api/uploads/${encodeURIComponent(value.upload)}`} alt="Selected input" />}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="small truncate">{uploaded ? value.original : <span className="muted">Current: <span className="mono">{String(param.value)}</span></span>}</div>
-        <div className="row mt-8">
-          <button className="btn btn-sm" type="button" onClick={() => ref.current?.click()} disabled={busy}>
-            {busy ? <Spinner size={14} /> : <Icon name="upload" size={15} />}{uploaded ? 'Replace' : `Upload ${param.kind}`}
-          </button>
-          {uploaded && <button className="btn btn-sm btn-ghost" type="button" onClick={() => onChange(param.value)}>Use original</button>}
-        </div>
-      </div>
-      <input ref={ref} type="file" hidden accept={param.kind === 'image' ? 'image/*' : 'video/*'} onChange={(e) => upload(e.target.files?.[0])} />
+    <div className={`field ${wide ? 'full' : ''}`}>
+      <label htmlFor={id} className="param-title">{param.label}{param.title !== param.label && <span className="muted">· {param.title}</span>}</label>
+      <FieldControl id={id} field={param} value={value} onChange={onChange} preview={param.preview} disabled={param.kind === 'seed' && randomSeed} />
+      {param.kind === 'seed' && (
+        <label className="checkbox small"><input type="checkbox" checked={randomSeed} onChange={(e) => setRandomSeed(e.target.checked)} />Random seed for every run</label>
+      )}
+      {param.tooltip && <span className="hint">{param.tooltip}</span>}
     </div>
   )
 }
 
-function ParamField({ param, value, onChange, randomSeed, setRandomSeed }) {
-  const id = `p-${keyOf(param)}`
-  const label = (
-    <label htmlFor={id} className="param-title">{param.title}<span className="muted">· {param.input}</span></label>
-  )
-  if (param.kind === 'image' || param.kind === 'video') {
-    return <div className="field full">{label}<MediaField param={param} value={value} onChange={onChange} /></div>
-  }
-  if (param.kind === 'text') {
-    return <div className="field full">{label}<textarea id={id} className="textarea" value={value} onChange={(e) => onChange(e.target.value)} rows={3} /></div>
-  }
-  if (param.kind === 'seed') {
-    return (
-      <div className="field">
-        {label}
-        <div className="row">
-          <input id={id} className="input" type="number" min={0} value={value} disabled={randomSeed} onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} />
-          <button className="btn icon-btn" type="button" aria-label="New random seed" onClick={() => onChange(Math.floor(Math.random() * MAX_SEED))} disabled={randomSeed}><Icon name="dice" /></button>
-        </div>
-        <label className="checkbox small"><input type="checkbox" checked={randomSeed} onChange={(e) => setRandomSeed(e.target.checked)} />Random seed for every run</label>
-      </div>
-    )
-  }
-  if (param.kind === 'number') {
-    return (
-      <div className="field">
-        {label}
-        <input id={id} className="input" type="number" step={param.is_float ? 'any' : 1} value={value} onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))} />
-      </div>
-    )
-  }
-  return <div className="field">{label}<input id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)} /></div>
-}
+const OUT_ICON = { image: 'image', video: 'film', audio: 'audio' }
 
 export default function StepRun({ workflow, onBack, onChanged }) {
   const msg = useMessages()
   const openPreview = usePreview()
   const { system, refresh } = useSystem()
   const [params, setParams] = useState(null)
+  const [outputs, setOutputs] = useState([])
   const [values, setValues] = useState({})
   const [randomSeeds, setRandomSeeds] = useState({})
   const [run, setRun] = useState(null)
@@ -108,6 +58,7 @@ export default function StepRun({ workflow, onBack, onChanged }) {
   useEffect(() => {
     api.get(`/api/workflows/${workflow.id}/parameters`).then((d) => {
       setParams(d.parameters)
+      setOutputs(d.outputs || [])
       const v = {}
       d.parameters.forEach((p) => { v[keyOf(p)] = p.value })
       setValues(v)
@@ -165,7 +116,7 @@ export default function StepRun({ workflow, onBack, onChanged }) {
       let v = values[k]
       if (p.kind === 'seed' && randomSeeds[k]) v = { random_seed: true }
       if ((p.kind === 'number' || p.kind === 'seed') && v === '') {
-        msg.showWarning(`Please enter a value for “${p.title} · ${p.input}”.`)
+        msg.showWarning(`Please enter a value for “${p.label}”.`)
         return
       }
       if (JSON.stringify(v) !== JSON.stringify(p.value)) {
@@ -227,10 +178,13 @@ export default function StepRun({ workflow, onBack, onChanged }) {
       )}
 
       <div className="card">
-        <div className="card-head"><h3>Inputs</h3><span className="muted small">{params ? `${params.length} editable value(s)` : ''}</span></div>
+        <div className="card-head">
+          <div><h3>Run-time inputs</h3><span className="muted small">{params ? `${params.length} field(s) · choose which fields appear here in the Workflow editor` : ''}</span></div>
+          <Link className="btn btn-sm" to={`/workflows/${workflow.id}/editor`}><Icon name="sliders" size={14} />Open editor</Link>
+        </div>
         <div className="card-body">
           {!params ? <div className="row muted"><Spinner />Loading…</div> : params.length === 0 ? (
-            <p className="muted">This workflow has no prompts, seeds or input images to edit. Just press Run.</p>
+            <p className="muted">No run-time fields. Press Run, or tick “Run time” on any node setting in the Workflow editor.</p>
           ) : (
             <div className="params">
               {params.map((p) => (
@@ -246,6 +200,18 @@ export default function StepRun({ workflow, onBack, onChanged }) {
             </div>
           )}
         </div>
+        {outputs.length > 0 && (
+          <div className="card-body" style={{ borderTop: '1px solid var(--border)', paddingTop: 14, paddingBottom: 14 }}>
+            <div className="row row-wrap" style={{ gap: 8 }}>
+              <span className="small muted" style={{ fontWeight: 600 }}>Expected output</span>
+              {outputs.map((o) => (
+                <span key={o.node_id} className={`badge ${o.type === 'audio' ? 'badge-success' : o.type === 'video' ? 'badge-accent' : 'badge-info'}`}>
+                  <Icon name={OUT_ICON[o.type] || 'image'} size={12} />{o.type} · {o.title}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="wizard-foot">
           <button className="btn" onClick={onBack}><Icon name="chevronLeft" />Back</button>
           <div className="row">

@@ -7,7 +7,7 @@ SAMPLES = Path(__file__).resolve().parents[3] / "samples"
 
 
 def test_health_and_system(client):
-    assert client.get("/api/health").json()["version"] == "1.0.3"
+    assert client.get("/api/health").json()["version"] == "1.0.4"
     s = client.get("/api/system").json()
     assert s["backend_port"] == 3015 and s["frontend_port"] == 5091
     assert s["comfyui"]["reachable"] is True
@@ -107,10 +107,17 @@ def test_workflow_wizard_flow(client, files_dir, files_url):
                       json={"items": [{"name": row["name"], "value": f"{files_url}/sd15.bin"}]}).json()
     assert res["models"][0]["url"] == f"{files_url}/sd15.bin" and res["models"][0]["status"] == "missing"
 
-    params = client.get(f"/api/workflows/{wid}/parameters").json()["parameters"]
-    kinds = {(p["node_id"], p["input"]): p["kind"] for p in params}
-    assert kinds[("6", "text")] == "text" and kinds[("3", "seed")] == "seed" and kinds[("5", "width")] == "number"
-    assert [p["title"] for p in params if p["kind"] == "text"] == ["Positive Prompt", "Negative Prompt"]
+    # control map: prompts are run-time by default, seed/size are editable only
+    data = client.get(f"/api/workflows/{wid}/parameters").json()
+    kinds = {(p["node_id"], p["input"]): p["kind"] for p in data["parameters"]}
+    assert kinds == {("6", "text"): "text", ("7", "text"): "text"}
+    assert [p["label"] for p in data["parameters"]] == ["Positive Prompt", "Negative Prompt"]
+    assert data["outputs"] == [{"node_id": "9", "title": "SaveImage", "type": "image"}]
+    # the user ticks seed, steps and batch size as run-time in the editor
+    client.put(f"/api/workflows/{wid}/graph", json={"fields": {"3": {"seed": {"runtime": True}, "steps": {"runtime": True, "label": "Quality steps"}},
+                                                                 "5": {"batch_size": {"runtime": True}}}})
+    kinds = {(p["node_id"], p["input"]): p["kind"] for p in client.get(f"/api/workflows/{wid}/parameters").json()["parameters"]}
+    assert kinds[("3", "seed")] == "seed" and kinds[("3", "steps")] == "number" and kinds[("5", "batch_size")] == "number"
 
     overrides = {"6": {"text": "a red fox"}, "3": {"seed": {"random_seed": True}, "steps": 5}, "5": {"batch_size": 2}}
     run = client.post("/api/runs", json={"workflow_id": wid, "overrides": overrides}).json()
