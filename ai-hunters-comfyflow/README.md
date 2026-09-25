@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.1
+# AI Hunters ComfyFlow v1.0.2
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -46,18 +46,36 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
 
 ## Using the app
 
-* **New workflow (wizard)**
-  1. *Select workflow* – drop a ComfyUI `.json`, browse for it, or type a path on this computer
-     (the UI “Save” export and the “Export (API)” format both work). The backend converts it to
-     `data\workflows\<id>\workflow.py` (viewable/downloadable from the UI).
-  2. *Models* – every model file the workflow references is detected and matched with the model list.
+* **Sample library** – five ready-made workflows are added to the Workflows list on first start
+  (they live in `samples\workflows\`):
+
+  | Sample | File | Output |
+  |---|---|---|
+  | SD 1.5 Text to Image | `sd15_text2image.json` (ComfyUI UI export) | image |
+  | SDXL RealVis Text to Image | `sdxl_realvis_text2image.py` | image |
+  | Wan 2.1 Text to Video (GGUF) | `wan21_text2video_gguf.py` | video |
+  | Wan 2.1 Image to Video (GGUF) | `wan21_image2video_gguf.py` | video |
+  | FLUX Kontext Image Edit (Nunchaku) | `flux_kontext_nunchaku.py` | image |
+
+  The Python samples use the original ComfyBack2Code templates in `backend\cb2c_py\templates\workflow\`.
+  Deleted samples can be added again from *Workflows → Sample library*.
+* **Open existing workflows** – *Workflows → Open workflow file* (or *New workflow*) accepts a ComfyUI `.json`
+  (converted to Python automatically) **or an existing Python workflow `.py` script** (it must return a cb2c_py
+  `Workflow`, normally from `build_workflow()`). Upload it, drop it, or type its path on this computer.
+* **Wizard**
+  1. *Select workflow* – the file above; the generated script is stored in `data\workflows\<id>\workflow.py`.
+  2. *Models* – every model file the workflow references is detected and matched with the model table.
      URLs embedded in the workflow are picked up automatically. Each row has its own **Download** button,
-     plus *Download all missing* and an *Auto-download* switch. Rows without a URL can be edited in place.
-     **Run unlocks only when every model is ready.**
-  3. *Run & results* – edit prompts, seed, sizes and input images, run, follow live progress; results open
-     automatically in the **Image preview** or **Video preview** modal with **Download** / **Download all**.
-* **Models** – grid (5 per page) of all models: edit name, download URL, category and save location;
-  add, delete, download, cancel. Downloads resume and run in the background.
+     plus *Download all missing* and an *Auto-download* switch.
+  3. *Run & results* – edit prompts, seed, sizes and input images, then **Run**:
+     * models with a URL that are not on disk yet are **downloaded first, then the run starts by itself**;
+     * models with **no URL, a wrong URL or a failed download** open the **“Models needed for this run”** dialog.
+       Type a download URL **or the path of the file on this PC** (a folder works too). The model table is
+       updated, and this and every later run downloads the model automatically. Local files are hard-linked
+       (same drive, no extra space) or copied into the right ComfyUI models folder;
+     * results open automatically in the **Image preview** or **Video preview** modal with **Download** / **Download all**.
+* **Models** – grid (5 per page) of all models: edit name, download URL (or local file path), category and save
+  location; add, delete, download, cancel. Downloads resume and run in the background.
 * **Results** – every run with thumbnails, status, errors, preview and ZIP download.
 * **Settings** – ComfyUI status/start, *Sync nodes from ComfyUI* (regenerates typed node classes for your
   custom nodes), models folder, parallel downloads, Hugging Face / Civitai tokens.
@@ -85,7 +103,8 @@ ai-hunters-comfyflow/
 ├─ config/custom-nodes.txt          ComfyUI custom nodes installed by Setup.bat
 ├─ scripts/setup_comfyui.py         ComfyUI + PyTorch + custom-node installer
 ├─ scripts/prestart.py              registers a custom MODELS_DIR with ComfyUI
-├─ samples/                         sample workflow, images and video
+├─ samples/workflows/               sample library (.json + .py workflows, library.json)
+├─ samples/images, samples/videos   sample inputs / demo media
 ├─ backend/
 │  ├─ app/                          FastAPI app (python -m app)
 │  │  ├─ config.py                  .env loader/writer
@@ -95,7 +114,7 @@ ai-hunters-comfyflow/
 │  │  └─ defaults/models.json       initial model list
 │  ├─ cb2c_py/                      workflow library (typed nodes, Workflow, runner, converter)
 │  ├─ tools/fake_comfyui.py         ComfyUI stand-in for tests and GPU-less demos
-│  └─ tests/                        pytest suite (46 tests)
+│  └─ tests/                        pytest suite (48 tests)
 └─ frontend/                        React 18 + Vite, light theme, modal system
    └─ src/ pages · components · context · styles/theme-light.css
 ```
@@ -106,7 +125,8 @@ ai-hunters-comfyflow/
 `POST /api/comfyui/sync-nodes` · `GET /api/events` (SSE) ·
 `GET|POST /api/models` · `DELETE /api/models/{name}` · `POST /api/models/download|download-all|cancel` ·
 `GET /api/workflows` · `POST /api/workflows/upload|import-path` · `GET|PATCH|DELETE /api/workflows/{id}` ·
-`GET /api/workflows/{id}/script|models|parameters` · `POST /api/workflows/{id}/models/download-missing` ·
+`GET /api/workflows/{id}/script|models|parameters` · `POST /api/workflows/{id}/models/download-missing|resolve` ·
+`GET /api/samples` · `POST /api/samples/open` ·
 `POST|GET /api/runs` · `GET|DELETE /api/runs/{id}` · `POST /api/runs/{id}/cancel` ·
 `GET /api/runs/{id}/files/{filename}[?download=1]` · `GET /api/runs/{id}/zip` · `POST|GET /api/uploads`
 
@@ -114,7 +134,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 46 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 48 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 

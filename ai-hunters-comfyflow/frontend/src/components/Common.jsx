@@ -52,6 +52,7 @@ export function ModelStatus({ status, job }) {
 
 const RUN_STATUS = {
   queued: ['badge-info', 'Queued'],
+  preparing: ['badge-info', 'Downloading models'],
   running: ['badge-accent', 'Running'],
   succeeded: ['badge-success', 'Succeeded'],
   failed: ['badge-danger', 'Failed'],

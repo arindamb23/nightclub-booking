@@ -44,7 +44,7 @@ export default function Results() {
       key: 'outputs', header: 'Outputs', width: '28%',
       render: (r) => {
         const items = outputsToItems(r)
-        if (!items.length) return <span className="muted small">{r.status === 'running' || r.status === 'queued' ? 'Rendering…' : 'No preview'}</span>
+        if (!items.length) return <span className="muted small">{['running', 'queued', 'preparing'].includes(r.status) ? 'Rendering…' : 'No preview'}</span>
         return (
           <div className="thumb-strip">
             {items.slice(0, 4).map((item, i) => <Thumb mini key={item.filename} item={item} onClick={() => openPreview(items, i)} />)}
@@ -61,6 +61,7 @@ export default function Results() {
       render: (r) => (
         <div className="status-cell">
           <RunStatus status={r.status} />
+          {r.status === 'preparing' && r.progress?.models && <span className="small muted">{r.progress.models.ready}/{r.progress.models.total} models ready</span>}
           {(r.status === 'running' || r.status === 'queued') && <Progress percent={r.progress?.total ? (r.progress.done / r.progress.total) * 100 : 0} indeterminate={!r.progress?.done} />}
           {r.status === 'failed' && <span className="small truncate" style={{ color: 'var(--danger)', maxWidth: 260 }} title={r.error}>{r.error}</span>}
         </div>
@@ -100,7 +101,7 @@ export default function Results() {
             </select>
             <select className="select" style={{ width: 170 }} value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">
               <option value="">Any status</option>
-              {['succeeded', 'failed', 'running', 'cancelled'].map((s) => <option key={s} value={s}>{s}</option>)}
+              {['succeeded', 'failed', 'running', 'preparing', 'cancelled'].map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             <span className="topbar-spacer" />
             <button className="btn btn-ghost" onClick={load}><Icon name="refresh" />Refresh</button>

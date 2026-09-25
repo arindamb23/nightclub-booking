@@ -8,7 +8,9 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
-from app.services.runs import runs, RunError, uploads_dir
+from fastapi.responses import JSONResponse
+
+from app.services.runs import runs, RunError, ModelsMissing, uploads_dir
 from app.services.workflows import WorkflowError
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -25,6 +27,9 @@ class RunIn(BaseModel):
 def start_run(body: RunIn):
     try:
         return runs.start(body.workflow_id, body.overrides)
+    except ModelsMissing as e:
+        return JSONResponse(status_code=409, content={"detail": {
+            "code": "models_missing", "message": str(e), "workflow_id": body.workflow_id, "models": e.models}})
     except (RunError, WorkflowError) as e:
         raise HTTPException(409, str(e))
 

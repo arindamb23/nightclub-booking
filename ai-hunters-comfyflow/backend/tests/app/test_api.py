@@ -7,7 +7,7 @@ SAMPLES = Path(__file__).resolve().parents[3] / "samples"
 
 
 def test_health_and_system(client):
-    assert client.get("/api/health").json()["version"] == "1.0.1"
+    assert client.get("/api/health").json()["version"] == "1.0.2"
     s = client.get("/api/system").json()
     assert s["backend_port"] == 3015 and s["frontend_port"] == 5091
     assert s["comfyui"]["reachable"] is True
@@ -71,6 +71,11 @@ def _import_sample(client, name="Sample SD15"):
     return r.json()
 
 
+def _wait_run(client, run_id, timeout=20):
+    return wait_for(lambda: (lambda r: r if r["status"] in ("succeeded", "failed", "cancelled") else None)(
+        client.get(f"/api/runs/{run_id}").json()), timeout=timeout)
+
+
 def test_workflow_wizard_flow(client, files_dir, files_url):
     wf = _import_sample(client)
     wid = wf["id"]
@@ -85,28 +90,35 @@ def test_workflow_wizard_flow(client, files_dir, files_url):
     assert row["url"].startswith("https://huggingface.co")  # taken from the workflow's own model list
     assert row["status"] == "missing"
 
-    # running is refused until models are ready
+    # a model without a usable URL: the run is refused with the list the UI shows in a modal
+    client.post("/api/models", json={"name": row["name"], "url": "", "category": "checkpoints", "original_name": row["name"]})
     r = client.post("/api/runs", json={"workflow_id": wid})
-    assert r.status_code == 409 and "not downloaded" in r.json()["detail"]
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["code"] == "models_missing" and detail["models"][0]["name"] == row["name"]
 
-    # point the registry at the local test server, then download
+    # bad input is rejected, nothing is saved
+    bad = client.post(f"/api/workflows/{wid}/models/resolve", json={"items": [{"name": row["name"], "value": "not a url"}]})
+    assert bad.status_code == 400 and "neither a URL nor a file path" in bad.json()["detail"]
+
+    # the user enters the URL; the next run downloads the model first, then runs by itself
     (files_dir / "sd15.bin").write_bytes(b"1" * 1024)
-    client.post("/api/models", json={"name": row["name"], "url": f"{files_url}/sd15.bin", "category": "checkpoints",
-                                      "original_name": row["name"]})
-    started = client.post(f"/api/workflows/{wid}/models/download-missing").json()["started"]
-    assert len(started) == 1
-    wait_for(lambda: client.get(f"/api/workflows/{wid}/models").json()["ready"] == 1)
-    assert client.get(f"/api/workflows/{wid}").json()["models_ready"] == 1
+    res = client.post(f"/api/workflows/{wid}/models/resolve",
+                      json={"items": [{"name": row["name"], "value": f"{files_url}/sd15.bin"}]}).json()
+    assert res["models"][0]["url"] == f"{files_url}/sd15.bin" and res["models"][0]["status"] == "missing"
 
     params = client.get(f"/api/workflows/{wid}/parameters").json()["parameters"]
     kinds = {(p["node_id"], p["input"]): p["kind"] for p in params}
     assert kinds[("6", "text")] == "text" and kinds[("3", "seed")] == "seed" and kinds[("5", "width")] == "number"
+    assert [p["title"] for p in params if p["kind"] == "text"] == ["Positive Prompt", "Negative Prompt"]
 
     overrides = {"6": {"text": "a red fox"}, "3": {"seed": {"random_seed": True}, "steps": 5}, "5": {"batch_size": 2}}
     run = client.post("/api/runs", json={"workflow_id": wid, "overrides": overrides}).json()
-    done = wait_for(lambda: (lambda r: r if r["status"] in ("succeeded", "failed") else None)(
-        client.get(f"/api/runs/{run['id']}").json()))
+    assert run["status"] == "preparing"
+    done = _wait_run(client, run["id"])
     assert done["status"] == "succeeded", done
+    assert done["progress"]["models"]["ready"] == 1
+    assert client.get(f"/api/workflows/{wid}/models").json()["ready"] == 1
     assert len(done["outputs"]) == 2 and all(o["kind"] == "image" for o in done["outputs"])
     f = done["outputs"][0]["filename"]
     r = client.get(f"/api/runs/{run['id']}/files/{f}?download=1")
@@ -115,6 +127,68 @@ def test_workflow_wizard_flow(client, files_dir, files_url):
     assert client.get(f"/api/runs/{run['id']}/files/..%2F..%2F.env").status_code == 404
     assert client.get(f"/api/workflows/{wid}").json()["last_run_status"] == "succeeded"
     assert any(r["id"] == run["id"] for r in client.get(f"/api/runs?workflow_id={wid}").json()["runs"])
+
+
+def test_failed_download_asks_again_and_local_path_works(client, files_url, tmp_path):
+    prompt = {
+        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": "broken_url_model.safetensors"}},
+        "2": {"class_type": "SaveImage", "inputs": {"images": ["1", 0], "filename_prefix": "x"}},
+    }
+    p = tmp_path / "broken.json"
+    p.write_text(json.dumps(prompt))
+    wid = client.post("/api/workflows/import-path", json={"path": str(p)}).json()["id"]
+    client.post(f"/api/workflows/{wid}/models/resolve",
+                json={"items": [{"name": "broken_url_model.safetensors", "value": f"{files_url}/nope.bin"}]})
+    run = client.post("/api/runs", json={"workflow_id": wid}).json()
+    done = _wait_run(client, run["id"])
+    assert done["status"] == "failed" and done["error_code"] == "models_missing"
+    assert done["failed_models"][0]["name"] == "broken_url_model.safetensors" and "404" in done["failed_models"][0]["error"]
+    # next attempt: the modal lists the model again
+    again = client.post("/api/runs", json={"workflow_id": wid})
+    assert again.status_code == 409 and again.json()["detail"]["models"][0]["status"] == "error"
+
+    # the user points at a file already on disk (a folder works too): it is linked/copied into models\checkpoints
+    local_dir = tmp_path / "my_models"
+    local_dir.mkdir()
+    (local_dir / "broken_url_model.safetensors").write_bytes(b"7" * 5000)
+    res = client.post(f"/api/workflows/{wid}/models/resolve",
+                      json={"items": [{"name": "broken_url_model.safetensors", "value": str(local_dir)}]})
+    assert res.status_code == 200, res.text
+    run = client.post("/api/runs", json={"workflow_id": wid}).json()
+    assert _wait_run(client, run["id"])["status"] == "succeeded"
+    target = TMP / "models" / "checkpoints" / "broken_url_model.safetensors"
+    assert target.stat().st_size == 5000
+
+
+def test_sample_library_and_python_import(client, tmp_path):
+    samples = client.get("/api/samples").json()["samples"]
+    files = [s["file"] for s in samples]
+    assert files[0] == "sd15_text2image.json" and "wan21_image2video_gguf.py" in files and len(files) == 5
+    assert all(s["workflow_id"] for s in samples)  # added to the Workflows list on first start
+    names = [w["name"] for w in client.get("/api/workflows").json()["workflows"]]
+    assert "Wan 2.1 Text to Video (GGUF)" in names
+    again = client.post("/api/samples/open", json={"file": "sdxl_realvis_text2image.py"}).json()
+    assert again["id"] == next(s["workflow_id"] for s in samples if s["file"] == "sdxl_realvis_text2image.py")
+    assert again["format"] == "python" and again["node_count"] == 7
+
+    wan = next(s for s in samples if s["file"] == "wan21_image2video_gguf.py")
+    models = client.get(f"/api/workflows/{wan['workflow_id']}/models").json()["models"]
+    cats = {m["name"]: m["category"] for m in models}
+    assert cats["wan2.1-i2v-14b-480p-Q4_K_M.gguf"] == "unet" and cats["clip_vision_h.safetensors"] == "clip_vision"
+
+    # an old-style script (function name other than build_workflow) opens too
+    legacy = tmp_path / "legacy.py"
+    legacy.write_text(
+        "from cb2c_py.lib.workflow import Workflow\n"
+        "from cb2c_py.nodes.generated.emptylatentimage import EmptyLatentImage\n"
+        "def my_flow():\n    wf = Workflow()\n    wf.add_node(EmptyLatentImage(width=64, height=64))\n    return wf\n"
+    )
+    wf = client.post("/api/workflows/import-path", json={"path": str(legacy)}).json()
+    assert wf["format"] == "python" and wf["node_count"] == 1
+    bad = tmp_path / "bad.py"
+    bad.write_text("x = 1\n")
+    r = client.post("/api/workflows/import-path", json={"path": str(bad)})
+    assert r.status_code == 400 and "build_workflow" in r.json()["detail"]
 
 
 def test_api_format_video_and_errors(client, tmp_path):
@@ -128,8 +202,7 @@ def test_api_format_video_and_errors(client, tmp_path):
     wf = client.post("/api/workflows/import-path", json={"path": str(p)}).json()
     assert wf["format"] == "api"
     run = client.post("/api/runs", json={"workflow_id": wf["id"]}).json()
-    done = wait_for(lambda: (lambda r: r if r["status"] in ("succeeded", "failed") else None)(
-        client.get(f"/api/runs/{run['id']}").json()))
+    done = _wait_run(client, run["id"])
     assert done["outputs"][0]["kind"] == "video"
 
     bad = {"1": {"class_type": "FailNode", "inputs": {"value": 1}}}
@@ -138,8 +211,7 @@ def test_api_format_video_and_errors(client, tmp_path):
     wf2 = client.post("/api/workflows/import-path", json={"path": str(p2)}).json()
     assert any("GenericNode" in w for w in wf2["warnings"])
     run = client.post("/api/runs", json={"workflow_id": wf2["id"]}).json()
-    done = wait_for(lambda: (lambda r: r if r["status"] in ("succeeded", "failed") else None)(
-        client.get(f"/api/runs/{run['id']}").json()))
+    done = _wait_run(client, run["id"])
     assert done["status"] == "failed" and "simulated validation error" in done["error_details"][0]
 
 

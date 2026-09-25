@@ -54,8 +54,7 @@ export default function Wizard() {
 
   useEffect(() => { reload() }, [reload])
 
-  const modelsReady = workflow && workflow.models_ready === workflow.models_total
-  const reached = !workflow ? 1 : modelsReady ? 3 : 2
+  const reached = !workflow ? 1 : 3
   const go = (n) => {
     if (n === 1) setParams({ step: '1' })
     else setParams({ step: String(n) })
@@ -66,7 +65,7 @@ export default function Wizard() {
       <PageHeader
         title={workflow ? workflow.name : 'New workflow'}
         subtitle={step === 1
-          ? 'Choose a ComfyUI workflow file. It is converted to a Python script automatically.'
+          ? 'Open a ComfyUI workflow (.json, converted to Python automatically) or an existing Python workflow script (.py).'
           : step === 2
             ? 'These models are needed by the workflow. Missing ones are downloaded into the right ComfyUI folders.'
             : 'Adjust the inputs, run the workflow and preview the results.'}

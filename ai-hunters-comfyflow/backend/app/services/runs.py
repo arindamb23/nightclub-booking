@@ -26,6 +26,30 @@ class RunError(ValueError):
     pass
 
 
+class ModelsMissing(RunError):
+    """Some models have no usable URL/path: the UI asks the user for them."""
+
+    def __init__(self, models: List[Dict[str, Any]]):
+        super().__init__(
+            f"{len(models)} model(s) cannot be downloaded automatically. "
+            "Enter a download URL or the path of the file on this computer."
+        )
+        self.models = models
+
+
+def _model_brief(r: Dict[str, Any]) -> Dict[str, Any]:
+    job = r.get("job") or {}
+    return {
+        "name": r["name"],
+        "category": r["category"],
+        "url": r.get("url", ""),
+        "status": r["status"],
+        "error": job.get("error", "") if r["status"] == "error" else "",
+        "used_by": r.get("used_by", []),
+        "resolved_dir": r.get("resolved_dir", ""),
+    }
+
+
 def _runs_dir() -> Path:
     p = get_settings().data_dir / "runs"
     p.mkdir(parents=True, exist_ok=True)
@@ -106,27 +130,35 @@ class RunManager:
     # ------------------------------------------------------------ running
     def start(self, workflow_id: str, overrides: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         meta = workflows.get(workflow_id)
-        missing = [m["name"] for m in workflows.detect_models(workflow_id) if m["status"] != "ready"]
-        if missing:
-            raise RunError("These models are not downloaded yet: " + ", ".join(missing))
+        rows = workflows.detect_models(workflow_id)
+        need_input = [_model_brief(r) for r in rows if r["status"] in ("no_url", "error")]
+        if need_input:
+            raise ModelsMissing(need_input)
         if not comfy.status()["reachable"]:
             raise RunError(
                 "ComfyUI is not running. Start it from Settings or with Start-all.bat, then try again."
             )
+        pending = [r for r in rows if r["status"] != "ready"]
+        for r in pending:
+            if r["status"] == "missing":
+                workflows.downloader.start(r["registry_name"], r["name"])
         run_id = dt.datetime.now().strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
         run = {
             "id": run_id,
             "workflow_id": workflow_id,
             "workflow_name": meta["name"],
-            "status": "queued",
+            "status": "preparing" if pending else "queued",
             "created_at": dt.datetime.now().isoformat(timespec="seconds"),
             "finished_at": None,
             "duration": None,
             "overrides": overrides,
-            "progress": {"node": None, "class_type": None, "value": 0, "max": 0, "done": 0, "total": meta["node_count"]},
+            "progress": {"node": None, "class_type": None, "value": 0, "max": 0, "done": 0, "total": meta["node_count"],
+                         "models": None},
             "outputs": [],
             "error": None,
+            "error_code": None,
             "error_details": [],
+            "failed_models": [],
         }
         self._save(run)
         cancel = threading.Event()
@@ -135,6 +167,35 @@ class RunManager:
         threading.Thread(target=self._execute, args=(run, cancel), daemon=True, name=f"run-{run_id}").start()
         self._publish(run)
         return run
+
+    def _prepare_models(self, run: Dict[str, Any], cancel: threading.Event) -> None:
+        """Waits until every model of the workflow is on disk (downloads were started in start())."""
+        last_pub = 0.0
+        while True:
+            if cancel.is_set():
+                raise WorkflowCancelled("Run cancelled")
+            rows = workflows.detect_models(run["workflow_id"], register=False)
+            failed = [_model_brief(r) for r in rows if r["status"] in ("error", "no_url")]
+            if failed:
+                raise ModelsMissing(failed)
+            for r in rows:  # restart a download that stopped (e.g. cancelled in the Models page)
+                if r["status"] == "missing":
+                    workflows.downloader.start(r["registry_name"], r["name"])
+            ready = sum(1 for r in rows if r["status"] == "ready")
+            run["progress"]["models"] = {
+                "ready": ready,
+                "total": len(rows),
+                "items": [
+                    {"name": r["name"], "status": r["status"], "percent": (r.get("job") or {}).get("percent")}
+                    for r in rows
+                ],
+            }
+            if ready == len(rows):
+                return
+            if time.time() - last_pub > 1.0:
+                last_pub = time.time()
+                self._publish(run)
+            time.sleep(1.0)
 
     def cancel(self, run_id: str) -> Dict[str, Any]:
         ev = self._cancel.get(run_id)
@@ -187,6 +248,11 @@ class RunManager:
             self._publish(run)
 
         try:
+            if run["status"] == "preparing":
+                self._save(run)
+                self._prepare_models(run, cancel)
+                run["status"] = "queued"
+                self._publish(run)
             wf = workflows.build(run["workflow_id"])
             run["progress"]["total"] = len(wf.nodes)
             self._apply_overrides(wf, run["overrides"], runner)
@@ -208,6 +274,12 @@ class RunManager:
                 run["error"] = "The workflow finished but produced no output files (add a Save/Preview node)."
         except WorkflowCancelled:
             run["status"] = "cancelled"
+        except ModelsMissing as e:
+            run["status"] = "failed"
+            run["error"] = "Some models could not be downloaded. Enter the correct URL or file path and run again."
+            run["error_code"] = "models_missing"
+            run["failed_models"] = e.models
+            run["error_details"] = [f"{m['name']}: {m['error'] or 'no download URL'}" for m in e.models]
         except ComfyUIError as e:
             run["status"] = "failed"
             run["error"] = e.args[0] if e.args else str(e)

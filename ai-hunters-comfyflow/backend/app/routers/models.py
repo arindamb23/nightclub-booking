@@ -43,6 +43,7 @@ def save_model(body: ModelIn):
         entry = registry.upsert(body.model_dump(exclude={"original_name"}), original_name=body.original_name)
     except RegistryError as e:
         raise HTTPException(400, str(e))
+    downloader.clear(entry["name"], body.original_name or entry["name"])
     return _row(entry)
 
 

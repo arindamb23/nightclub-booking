@@ -13,7 +13,7 @@ import requests
 
 from app.config import get_settings
 from app.events import bus
-from app.services.registry import registry, RegistryError
+from app.services.registry import registry, RegistryError, is_local_source, local_source_path
 
 CHUNK = 1024 * 1024
 PUBLISH_EVERY = 0.5
@@ -98,6 +98,14 @@ class Downloader:
         self._pool().submit(self._run, job)
         return job.to_dict()
 
+    def clear(self, *names: str) -> None:
+        """Forgets finished/failed jobs (called when a model's URL or path changes)."""
+        with self._lock:
+            for n in names:
+                j = self._jobs.get(n)
+                if j and j.status not in ("queued", "downloading"):
+                    del self._jobs[n]
+
     def cancel(self, name: str) -> Dict[str, Any]:
         j = self._jobs.get(name)
         if j is None:
@@ -131,6 +139,9 @@ class Downloader:
         if job.cancel.is_set():
             job.status = "cancelled"
             self._publish(job)
+            return
+        if is_local_source(job.url):
+            self._copy_local(job)
             return
         part = job.path.with_name(job.path.name + ".part")
         try:
@@ -184,6 +195,48 @@ class Downloader:
             job.total = job.total or job.downloaded
             self._publish(job)
         except (requests.RequestException, OSError, DownloadError) as e:
+            job.status = "error"
+            job.error = str(e)
+            self._publish(job)
+
+
+    def _copy_local(self, job: Job) -> None:
+        """Model given as a local file: hard-link it (same drive, instant) or copy it."""
+        part = job.path.with_name(job.path.name + ".part")
+        try:
+            src = local_source_path(job.url)
+            if not src.is_file():
+                raise DownloadError(f"Local model file not found: {src}")
+            job.path.parent.mkdir(parents=True, exist_ok=True)
+            job.total = src.stat().st_size
+            job.status = "downloading"
+            self._publish(job)
+            if src.resolve() != job.path.resolve():
+                try:
+                    os.link(src, job.path)
+                except OSError:
+                    last = 0.0
+                    with open(src, "rb") as fin, open(part, "wb") as fout:
+                        while True:
+                            if job.cancel.is_set():
+                                job.status = "cancelled"
+                                self._publish(job)
+                                part.unlink(missing_ok=True)
+                                return
+                            chunk = fin.read(8 * CHUNK)
+                            if not chunk:
+                                break
+                            fout.write(chunk)
+                            job.downloaded += len(chunk)
+                            if time.time() - last >= PUBLISH_EVERY:
+                                last = time.time()
+                                self._publish(job)
+                    os.replace(part, job.path)
+            job.downloaded = job.total
+            job.status = "done"
+            self._publish(job)
+        except (OSError, DownloadError) as e:
+            part.unlink(missing_ok=True)
             job.status = "error"
             job.error = str(e)
             self._publish(job)

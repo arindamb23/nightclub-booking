@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.1
+# AI Hunters ComfyFlow v1.0.2
 """FastAPI application for AI Hunters ComfyFlow."""
 import asyncio
 from contextlib import asynccontextmanager
@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.events import bus
 from app.routers import system, models, workflows, runs
 from app.services.registry import registry
+from app.services import workflows as workflows_service
 
 
 @asynccontextmanager
@@ -21,6 +22,10 @@ async def lifespan(_: FastAPI):
     for sub in ("workflows", "runs", "outputs", "uploads"):
         (settings.data_dir / sub).mkdir(parents=True, exist_ok=True)
     registry.load()
+    try:
+        workflows_service.seed_samples()
+    except Exception as e:  # noqa: BLE001 - samples are optional
+        print(f"Sample workflows could not be added: {e}")
     yield
 
 
@@ -44,5 +49,5 @@ def health():
     return {"status": "ok", "app": APP_NAME, "version": APP_VERSION}
 
 
-for r in (system.router, models.router, workflows.router, runs.router):
+for r in (system.router, models.router, workflows.router, workflows.samples_router, runs.router):
     app.include_router(r)

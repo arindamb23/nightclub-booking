@@ -191,8 +191,8 @@ export default function StepModels({ workflow, onBack, onNext, onChanged }) {
         <div className="wizard-foot" style={{ borderTop: 'none' }}>
           <button className="btn" onClick={onBack}><Icon name="chevronLeft" />Back</button>
           <div className="row">
-            <span className="muted small">{allReady ? 'All required models are ready.' : 'Run unlocks when every model is ready.'}</span>
-            <button className="btn btn-primary" disabled={!allReady} onClick={onNext}>Next: run<Icon name="chevronRight" /></button>
+            <span className="muted small">{allReady ? 'All required models are ready.' : 'Missing models are downloaded automatically when you run.'}</span>
+            <button className="btn btn-primary" onClick={onNext}>Next: run<Icon name="chevronRight" /></button>
           </div>
         </div>
       </div>

@@ -8,16 +8,33 @@ import { api } from '../api.js'
 import { useMessages } from '../context/MessageContext.jsx'
 import { formatDate } from '../utils/format.js'
 
+const FORMAT = { ui: 'UI graph', api: 'API', python: 'Python script' }
+
 export default function Workflows() {
   const msg = useMessages()
   const navigate = useNavigate()
   const [rows, setRows] = useState(null)
   const [query, setQuery] = useState('')
   const [code, setCode] = useState(null)
+  const [samples, setSamples] = useState([])
+  const [opening, setOpening] = useState('')
 
   const load = useCallback(async () => {
     try { setRows((await api.get('/api/workflows')).workflows) } catch (e) { msg.showError(e); setRows([]) }
+    try { setSamples((await api.get('/api/samples')).samples) } catch { setSamples([]) }
   }, [msg])
+
+  const openSample = async (s) => {
+    setOpening(s.file)
+    try {
+      const wf = await api.post('/api/samples/open', { file: s.file })
+      navigate(`/workflows/${wf.id}/wizard?step=2`)
+    } catch (e) {
+      msg.showError(e)
+    } finally {
+      setOpening('')
+    }
+  }
   useEffect(() => { load() }, [load])
 
   const filtered = useMemo(() => {
@@ -41,7 +58,7 @@ export default function Workflows() {
         </>
       ),
     },
-    { key: 'format', header: 'Format', render: (r) => <span className="badge">{r.format === 'ui' ? 'UI graph' : 'API'}</span> },
+    { key: 'format', header: 'Format', render: (r) => <span className="badge">{FORMAT[r.format] || r.format}</span> },
     { key: 'nodes', header: 'Nodes', render: (r) => r.node_count },
     {
       key: 'models', header: 'Models',
@@ -58,7 +75,7 @@ export default function Workflows() {
       render: (r) => (
         <div className="actions">
           <button className="btn btn-sm" onClick={() => navigate(`/workflows/${r.id}/wizard?step=2`)}><Icon name="box" size={15} />Models</button>
-          <button className="btn btn-sm btn-primary" onClick={() => navigate(`/workflows/${r.id}/wizard?step=3`)} disabled={r.models_ready !== r.models_total}><Icon name="play" size={12} />Run</button>
+          <button className="btn btn-sm btn-primary" onClick={() => navigate(`/workflows/${r.id}/wizard?step=3`)}><Icon name="play" size={12} />Run</button>
           <button className="btn btn-ghost icon-btn" onClick={() => setCode(r)} aria-label={`View script of ${r.name}`}><Icon name="code" size={16} /></button>
           <button className="btn btn-ghost icon-btn btn-danger" onClick={() => remove(r)} aria-label={`Delete ${r.name}`}><Icon name="trash" size={16} /></button>
         </div>
@@ -71,7 +88,12 @@ export default function Workflows() {
       <PageHeader
         title="Workflows"
         subtitle="Imported ComfyUI workflows. Each one is converted to a Python script; runs unlock when all of its models are downloaded."
-        actions={<button className="btn btn-primary" onClick={() => navigate('/workflows/new')}><Icon name="plus" />New workflow</button>}
+        actions={(
+          <>
+            <button className="btn" onClick={() => navigate('/workflows/new')}><Icon name="folder" />Open workflow file</button>
+            <button className="btn btn-primary" onClick={() => navigate('/workflows/new')}><Icon name="plus" />New workflow</button>
+          </>
+        )}
       />
       {rows && rows.length === 0 ? (
         <div className="card">
@@ -92,6 +114,36 @@ export default function Workflows() {
             </>
           )}
         />
+      )}
+      {samples.length > 0 && (
+        <div className="card mt-24">
+          <div className="card-head">
+            <div>
+              <h3>Sample library</h3>
+              <div className="small muted">Ready-made workflows shipped in <span className="mono">samples\workflows</span> (JSON and Python scripts).</div>
+            </div>
+          </div>
+          <div className="card-body">
+            <div className="sample-grid">
+              {samples.map((s) => (
+                <div key={s.file} className="sample-card">
+                  <div className="row between">
+                    <span className={`badge ${s.kind === 'video' ? 'badge-accent' : 'badge-info'}`}><Icon name={s.kind === 'video' ? 'film' : 'image'} size={12} />{s.kind}</span>
+                    <span className="badge">{s.format === 'python' ? '.py script' : '.json'}</span>
+                  </div>
+                  <h3 className="mt-8">{s.name}</h3>
+                  <p className="small muted">{s.description}</p>
+                  <div className="row between mt-8">
+                    <span className="small mono muted truncate" title={s.path}>{s.file}</span>
+                    <button className="btn btn-sm btn-primary" onClick={() => openSample(s)} disabled={opening === s.file}>
+                      <Icon name={s.workflow_id ? 'eye' : 'plus'} size={14} />{s.workflow_id ? 'Open' : 'Add & open'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
       {code && <CodeModal workflow={code} onClose={() => setCode(null)} />}
     </>

@@ -1,9 +1,11 @@
 // Thin fetch wrapper. Every failure becomes an ApiError that the UI shows in a modal.
 export class ApiError extends Error {
-  constructor(message, { status = 0, details = [] } = {}) {
+  constructor(message, { status = 0, details = [], code = null, data = null } = {}) {
     super(message)
     this.status = status
     this.details = details
+    this.code = code
+    this.data = data
   }
 }
 
@@ -25,7 +27,11 @@ async function request(method, url, body, { form = false } = {}) {
   const type = res.headers.get('content-type') || ''
   const data = type.includes('application/json') ? await res.json().catch(() => null) : await res.text()
   if (!res.ok) {
-    let msg = (data && data.detail) || (typeof data === 'string' && data) || `Request failed (${res.status})`
+    const detail = data && data.detail
+    if (detail && typeof detail === 'object' && !Array.isArray(detail)) {
+      throw new ApiError(detail.message || `Request failed (${res.status})`, { status: res.status, code: detail.code, data: detail })
+    }
+    let msg = detail || (typeof data === 'string' && data) || `Request failed (${res.status})`
     if (Array.isArray(msg)) msg = msg.map((d) => d.msg || JSON.stringify(d)).join('\n')
     throw new ApiError(msg, { status: res.status })
   }

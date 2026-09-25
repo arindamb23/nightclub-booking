@@ -20,17 +20,19 @@ export default function StepSelect({ workflow, onImported, onNext }) {
 
   const pick = (f) => {
     if (!f) return
-    if (!f.name.toLowerCase().endsWith('.json')) {
-      msg.showWarning(`“${f.name}” is not a .json file. Export your workflow from ComfyUI with “Save” or “Export (API)”.`)
+    if (!/\.(json|py)$/i.test(f.name)) {
+      msg.showWarning(`“${f.name}” is not a workflow file. Choose a ComfyUI .json export or a Python workflow .py script.`)
       return
     }
     setFile(f)
     setPath('')
-    if (!name) setName(f.name.replace(/\.json$/i, ''))
+    if (!name) setName(f.name.replace(/\.(json|py)$/i, ''))
   }
 
   const finish = async (wf) => {
-    const lines = [`Converted ${wf.node_count} nodes (${wf.format === 'ui' ? 'UI' : 'API'} format) to workflow.py.`]
+    const lines = [wf.format === 'python'
+      ? `Opened the Python workflow script (${wf.node_count} nodes).`
+      : `Converted ${wf.node_count} nodes (${wf.format === 'ui' ? 'UI' : 'API'} format) to workflow.py.`]
     lines.push(`${wf.models_total} model file(s) detected, ${wf.models_ready} already on disk.`)
     if (wf.warnings?.length) {
       await msg.showWarning(lines.join('\n') + '\n\nThe converter reported some notes:', { title: 'Workflow imported with notes', details: wf.warnings })
@@ -76,7 +78,7 @@ export default function StepSelect({ workflow, onImported, onNext }) {
         <div className="card-body stack">
           <div className="summary">
             <div><div className="k">Source file</div><div className="v truncate">{workflow.source_filename}</div></div>
-            <div><div className="k">Format</div><div className="v">{workflow.format === 'ui' ? 'ComfyUI graph (UI)' : 'ComfyUI API'}</div></div>
+            <div><div className="k">Format</div><div className="v">{{ ui: 'ComfyUI graph (UI)', api: 'ComfyUI API', python: 'Python script' }[workflow.format] || workflow.format}</div></div>
             <div><div className="k">Nodes</div><div className="v">{workflow.node_count}</div></div>
             <div><div className="k">Models ready</div><div className="v">{workflow.models_ready} / {workflow.models_total}</div></div>
           </div>
@@ -117,11 +119,11 @@ export default function StepSelect({ workflow, onImported, onNext }) {
             </>
           ) : (
             <>
-              <h3>Drop a ComfyUI workflow .json here</h3>
-              <p className="muted">or click to browse your computer. Both the normal “Save” export and the “Export (API)” format work.</p>
+              <h3>Drop a workflow file here</h3>
+              <p className="muted">or click to browse. ComfyUI <b>.json</b> exports (“Save” or “Export (API)”) are converted to Python; existing Python workflow <b>.py</b> scripts open as they are.</p>
             </>
           )}
-          <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={(e) => pick(e.target.files?.[0])} />
+          <input ref={fileRef} type="file" accept=".json,.py,application/json,text/x-python" hidden onChange={(e) => pick(e.target.files?.[0])} />
         </div>
 
         <div className="divider-text">or use a path on this computer</div>
@@ -131,10 +133,10 @@ export default function StepSelect({ workflow, onImported, onNext }) {
             <label htmlFor="wf-path">Workflow file path</label>
             <div className="row">
               <span className="muted"><Icon name="folder" /></span>
-              <input id="wf-path" className="input input-mono" placeholder="C:\Users\you\Documents\ComfyUI\my_workflow.json" value={path}
+              <input id="wf-path" className="input input-mono" placeholder="C:\Users\you\Documents\ComfyUI\my_workflow.json  or  …\my_workflow.py" value={path}
                 onChange={(e) => { setPath(e.target.value); setFile(null) }} />
             </div>
-            <span className="hint">Paths relative to the ComfyFlow folder work too. <button className="btn btn-ghost btn-sm" type="button" onClick={useSample}>Use the sample workflow</button></span>
+            <span className="hint">Paths relative to the ComfyFlow folder work too. More ready-made workflows: Workflows → Sample library. <button className="btn btn-ghost btn-sm" type="button" onClick={useSample}>Use the SD 1.5 sample</button></span>
           </div>
           <div className="field">
             <label htmlFor="wf-name">Workflow name</label>
@@ -148,7 +150,7 @@ export default function StepSelect({ workflow, onImported, onNext }) {
         <div className="row">
           {workflow && <button className="btn" onClick={() => setReplace(false)}>Cancel</button>}
           <button className="btn btn-primary" onClick={importNow} disabled={busy}>
-            {busy ? <Spinner /> : <Icon name="zap" />}Import &amp; convert
+            {busy ? <Spinner /> : <Icon name="zap" />}Open workflow
           </button>
         </div>
       </div>

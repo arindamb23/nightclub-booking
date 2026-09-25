@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import threading
 from pathlib import Path
@@ -21,6 +22,21 @@ CATEGORIES = [
 
 class RegistryError(ValueError):
     pass
+
+
+def is_local_source(url: str) -> bool:
+    """True when the "URL" is a file on this computer (C:\\..., \\\\server\\..., /path or file://)."""
+    u = (url or "").strip()
+    return bool(re.match(r"^[A-Za-z]:[\\/]", u)) or u.startswith(("\\\\", "/", "file://"))
+
+
+def local_source_path(url: str) -> Path:
+    u = url.strip().strip('"')
+    if u.lower().startswith("file:///"):
+        u = u[8:] if re.match(r"^[A-Za-z]:", u[8:]) else u[7:]
+    elif u.lower().startswith("file://"):
+        u = u[7:]
+    return Path(u if os.name == "nt" else u.replace("\\", "/"))
 
 
 def _normalize_name(name: str) -> str:
@@ -129,9 +145,12 @@ class ModelRegistry:
         name = _normalize_name(str(entry.get("name", "")))
         if not name:
             raise RegistryError("Model name is required.")
-        url = str(entry.get("url", "") or "").strip()
-        if url and not url.lower().startswith(("http://", "https://")):
-            raise RegistryError("Download URL must start with http:// or https://")
+        url = str(entry.get("url", "") or "").strip().strip('"')
+        if url and is_local_source(url):
+            if not local_source_path(url).is_file():
+                raise RegistryError(f"Local model file not found: {url}")
+        elif url and not url.lower().startswith(("http://", "https://")):
+            raise RegistryError("Enter a download URL (http:// or https://) or the full path of a model file on this computer.")
         category = entry.get("category") or "checkpoints"
         if category not in CATEGORIES:
             raise RegistryError(f"Unknown category '{category}'.")

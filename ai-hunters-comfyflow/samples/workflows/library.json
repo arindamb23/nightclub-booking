@@ -1,0 +1,12 @@
+[
+  {"file": "sd15_text2image.json", "name": "SD 1.5 Text to Image", "kind": "image",
+   "description": "Classic Stable Diffusion 1.5 graph exported from ComfyUI (UI format). Smallest model (~2 GB), the best first test."},
+  {"file": "sdxl_realvis_text2image.py", "name": "SDXL RealVis Text to Image", "kind": "image",
+   "description": "Python workflow script: RealVisXL 5.1 photo-realistic images at 768x768."},
+  {"file": "wan21_text2video_gguf.py", "name": "Wan 2.1 Text to Video (GGUF)", "kind": "video",
+   "description": "Python workflow script: 5-second video from a prompt. Needs the ComfyUI-GGUF node and a strong GPU."},
+  {"file": "wan21_image2video_gguf.py", "name": "Wan 2.1 Image to Video (GGUF)", "kind": "video",
+   "description": "Python workflow script: animates samples/images/girl.png. Needs the ComfyUI-GGUF node."},
+  {"file": "flux_kontext_nunchaku.py", "name": "FLUX Kontext Image Edit (Nunchaku)", "kind": "image",
+   "description": "Python workflow script: edits an image with a text instruction. Needs the ComfyUI-nunchaku node."}
+]

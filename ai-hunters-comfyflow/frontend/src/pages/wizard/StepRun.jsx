@@ -7,6 +7,7 @@ import { useMessages } from '../../context/MessageContext.jsx'
 import { useEvent } from '../../context/EventsContext.jsx'
 import { useSystem } from '../../context/SystemContext.jsx'
 import { formatDate, formatDuration } from '../../utils/format.js'
+import MissingModelsModal from '../../components/MissingModelsModal.jsx'
 
 const keyOf = (p) => `${p.node_id}::${p.input}`
 const MAX_SEED = 2 ** 50
@@ -91,7 +92,10 @@ export default function StepRun({ workflow, onBack, onChanged }) {
   const [run, setRun] = useState(null)
   const [history, setHistory] = useState([])
   const [starting, setStarting] = useState(false)
+  const [missing, setMissing] = useState(null) // { models, reason }
   const runRef = useRef(null)
+  const startRef = useRef(null)
+  const runCardRef = useRef(null)
 
   const loadHistory = useCallback(async () => {
     try {
@@ -117,6 +121,8 @@ export default function StepRun({ workflow, onBack, onChanged }) {
       const items = outputsToItems(r)
       if (items.length) openPreview(items, 0)
       else msg.showWarning(r.error || 'The run finished without image or video outputs.', { title: 'No previewable output' })
+    } else if (r.status === 'failed' && r.error_code === 'models_missing') {
+      setMissing({ models: r.failed_models, reason: 'These models could not be downloaded.' })
     } else if (r.status === 'failed') {
       msg.showError(r.error || 'The workflow failed.', { title: 'Workflow failed', details: r.error_details })
     } else if (r.status === 'cancelled') {
@@ -133,9 +139,13 @@ export default function StepRun({ workflow, onBack, onChanged }) {
       finish(r)
     }
   })
+  // keep the models progress of a preparing run live
+  useEvent('download', () => {
+    if (runRef.current) api.get(`/api/runs/${runRef.current}`).then((cur) => { if (runRef.current === cur.id) setRun(cur) }).catch(() => {})
+  })
 
   const comfy = system?.comfyui
-  const active = run && (run.status === 'queued' || run.status === 'running')
+  const active = run && ['queued', 'running', 'preparing'].includes(run.status)
 
   const startComfy = async () => {
     try {
@@ -163,9 +173,19 @@ export default function StepRun({ workflow, onBack, onChanged }) {
     }
     setStarting(true)
     try {
+      // Ask for models that cannot be fetched automatically before starting the run.
+      const check = await api.get(`/api/workflows/${workflow.id}/models`)
+      const need = check.models
+        .filter((m) => m.status === 'no_url' || m.status === 'error')
+        .map((m) => ({ name: m.name, category: m.category, url: m.url, status: m.status, error: m.job?.error || '', used_by: m.used_by }))
+      if (need.length) {
+        setMissing({ models: need })
+        return
+      }
       const r = await api.post('/api/runs', { workflow_id: workflow.id, overrides })
       runRef.current = r.id
       setRun(r)
+      setTimeout(() => runCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
       // Fallback poll in case an SSE event was missed.
       const poll = setInterval(async () => {
         if (runRef.current !== r.id) return clearInterval(poll)
@@ -180,11 +200,13 @@ export default function StepRun({ workflow, onBack, onChanged }) {
         } catch { /* ignore */ }
       }, 4000)
     } catch (e) {
-      msg.showError(e, { title: 'Cannot start the run' })
+      if (e.code === 'models_missing') setMissing({ models: e.data.models })
+      else msg.showError(e, { title: 'Cannot start the run' })
     } finally {
       setStarting(false)
     }
   }
+  startRef.current = start
 
   const cancel = async () => {
     try { await api.post(`/api/runs/${run.id}/cancel`) } catch (e) { msg.showError(e) }
@@ -231,24 +253,41 @@ export default function StepRun({ workflow, onBack, onChanged }) {
           <div className="row">
             {active && <button className="btn btn-danger" onClick={cancel}><Icon name="stop" size={13} />Cancel run</button>}
             <button className="btn btn-primary btn-lg" onClick={start} disabled={starting || active || !comfy?.reachable || !params}>
-              {starting || active ? <Spinner /> : <Icon name="play" size={15} />}{active ? 'Running…' : 'Run workflow'}
+              {starting || active ? <Spinner /> : <Icon name="play" size={15} />}{run?.status === 'preparing' ? 'Downloading models…' : active ? 'Running…' : 'Run workflow'}
             </button>
           </div>
         </div>
       </div>
 
       {run && (
-        <div className="card card-pad">
+        <div className="card card-pad" ref={runCardRef} style={{ scrollMarginTop: 76 }}>
           <div className="row between">
             <h3>Current run</h3>
             <RunStatus status={run.status} />
           </div>
+          {run.status === 'preparing' && prog?.models && (
+            <div className="run-progress mt-16">
+              <div className="row between small">
+                <span><b>Downloading models</b> before the run starts</span>
+                <span className="muted">{prog.models.ready} / {prog.models.total} ready</span>
+              </div>
+              <div className="mt-8"><Progress percent={(prog.models.ready / Math.max(1, prog.models.total)) * 100} large /></div>
+              <div className="stack mt-16" style={{ gap: 8 }}>
+                {prog.models.items.filter((m) => m.status !== 'ready').map((m) => (
+                  <div key={m.name}>
+                    <div className="row between small"><span className="mono truncate">{m.name}</span><span className="muted">{m.percent != null ? `${Math.round(m.percent)}%` : m.status}</span></div>
+                    <div className="mt-8"><Progress percent={m.percent} indeterminate={m.percent == null} /></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="run-progress mt-16">
             <div className="row between small">
-              <span>{prog?.class_type ? <>Executing <b>{prog.class_type}</b> (node {prog.node})</> : active ? 'Waiting for ComfyUI…' : 'Finished'}</span>
+              <span>{prog?.class_type ? <>Executing <b>{prog.class_type}</b> (node {prog.node})</> : run.status === 'preparing' ? 'Starts when the models are ready' : active ? 'Waiting for ComfyUI…' : 'Finished'}</span>
               <span className="muted">{prog?.done || 0} / {prog?.total || 0} nodes</span>
             </div>
-            <div className="mt-8"><Progress percent={overall} large indeterminate={active && !overall} /></div>
+            <div className="mt-8"><Progress percent={overall} large indeterminate={run.status !== 'preparing' && active && !overall} /></div>
             {nodePct != null && active && (
               <div className="mt-8 small muted row between"><span>Steps</span><span>{prog.value} / {prog.max}</span></div>
             )}
@@ -260,6 +299,16 @@ export default function StepRun({ workflow, onBack, onChanged }) {
             </div>
           )}
         </div>
+      )}
+
+      {missing && (
+        <MissingModelsModal
+          workflowId={workflow.id}
+          models={missing.models}
+          reason={missing.reason}
+          onClose={() => setMissing(null)}
+          onSaved={() => { setMissing(null); onChanged?.(); startRef.current?.() }}
+        />
       )}
 
       {history.length > 0 && (

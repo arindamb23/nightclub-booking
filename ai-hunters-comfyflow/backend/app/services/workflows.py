@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import inspect
 import json
 import re
 import shutil
@@ -14,7 +15,7 @@ from typing import Any, Dict, List, Optional
 
 from app.config import get_settings, PROJECT_ROOT
 from app.services import comfy
-from app.services.registry import registry, CATEGORIES
+from app.services.registry import registry, CATEGORIES, RegistryError, is_local_source, local_source_path
 from app.services.downloader import downloader
 from cb2c_py.lib.workflow import Workflow
 from cb2c_py.tools.convert_workflow import convert, sanitize_name
@@ -97,18 +98,36 @@ def _check_id(wid: str) -> str:
 
 
 # ----------------------------------------------------------------- import
-def import_workflow(raw: bytes, filename: str, name: Optional[str] = None) -> Dict[str, Any]:
+def _new_id(display: str) -> str:
+    base = _slug(display)
+    wid, n = base, 2
+    while (_root() / wid).exists():
+        wid = f"{base}_{n}"
+        n += 1
+    return wid
+
+
+def _finish_import(wid: str, meta: Dict[str, Any], model_hints: List[Dict[str, str]]) -> Dict[str, Any]:
+    _meta_path(wid).write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    # register models that the workflow itself documents (name + url + directory)
+    for hint in model_hints:
+        cat = hint.get("directory") or "checkpoints"
+        registry.ensure_entry(hint["name"], cat if cat in CATEGORIES else "checkpoints", hint.get("url", ""))
+    detect_models(wid)  # registers unknown models too
+    return get(wid)
+
+
+def import_workflow(raw: bytes, filename: str, name: Optional[str] = None, source_path: Optional[str] = None) -> Dict[str, Any]:
+    """Imports a ComfyUI workflow (.json) or a cb2c_py workflow script (.py)."""
+    if filename.lower().endswith(".py"):
+        return import_script(raw, filename, name, source_path)
     try:
         data = json.loads(raw.decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError) as e:
         raise WorkflowError(f"'{filename}' is not valid JSON: {e}") from e
     display = (name or Path(filename).stem).strip() or "workflow"
     with _lock:
-        base = _slug(display)
-        wid, n = base, 2
-        while (_root() / wid).exists():
-            wid = f"{base}_{n}"
-            n += 1
+        wid = _new_id(display)
         try:
             result = convert(data, sanitize_name(wid), filename, comfy.catalog())
         except ValueError as e:
@@ -122,6 +141,7 @@ def import_workflow(raw: bytes, filename: str, name: Optional[str] = None) -> Di
             "id": wid,
             "name": display,
             "source_filename": Path(filename).name,
+            "source_path": source_path,
             "format": result.format,
             "node_count": result.node_count,
             "warnings": result.warnings,
@@ -132,13 +152,47 @@ def import_workflow(raw: bytes, filename: str, name: Optional[str] = None) -> Di
             "last_run_id": None,
             "last_run_status": None,
         }
-        _meta_path(wid).write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    # register models that the workflow itself documents (name + url + directory)
-    for hint in result.model_hints:
-        cat = hint.get("directory") or "checkpoints"
-        registry.ensure_entry(hint["name"], cat if cat in CATEGORIES else "checkpoints", hint.get("url", ""))
-    detect_models(wid)  # registers unknown models too
-    return get(wid)
+    return _finish_import(wid, meta, result.model_hints)
+
+
+def import_script(raw: bytes, filename: str, name: Optional[str] = None, source_path: Optional[str] = None) -> Dict[str, Any]:
+    """Imports an existing Python workflow script (it must build a cb2c_py Workflow)."""
+    try:
+        code = raw.decode("utf-8-sig")
+        compile(code, filename, "exec")
+    except (UnicodeDecodeError, SyntaxError) as e:
+        raise WorkflowError(f"'{filename}' is not a valid Python file: {e}") from e
+    tree_name = re.search(r'^WORKFLOW_NAME\s*=\s*["\'](.+?)["\']', code, re.M)
+    display = (name or (tree_name.group(1) if tree_name else Path(filename).stem)).strip() or "workflow"
+    with _lock:
+        wid = _new_id(display)
+        folder = _root() / wid
+        folder.mkdir(parents=True)
+        (folder / "workflow.py").write_text(code, encoding="utf-8")
+        try:
+            wf = _load_script(folder / "workflow.py", wid)
+        except WorkflowError:
+            shutil.rmtree(folder, ignore_errors=True)
+            raise
+        prompt = wf.to_prompt()
+        (folder / "prompt.json").write_text(json.dumps(prompt, indent=2), encoding="utf-8")
+        doc = re.match(r'\s*(?:"""|\'\'\')(.+?)(?:"""|\'\'\')', code, re.S)
+        meta = {
+            "id": wid,
+            "name": display,
+            "source_filename": Path(filename).name,
+            "source_path": source_path,
+            "format": "python",
+            "node_count": len(prompt),
+            "warnings": [],
+            "notes": [doc.group(1).strip()] if doc else [],
+            "model_hints": [],
+            "created_at": _now(),
+            "updated_at": _now(),
+            "last_run_id": None,
+            "last_run_status": None,
+        }
+    return _finish_import(wid, meta, [])
 
 
 def import_from_path(path: str, name: Optional[str] = None) -> Dict[str, Any]:
@@ -147,9 +201,68 @@ def import_from_path(path: str, name: Optional[str] = None) -> Dict[str, Any]:
         p = PROJECT_ROOT / p
     if not p.is_file():
         raise WorkflowError(f"File not found: {p}")
-    if p.suffix.lower() != ".json":
-        raise WorkflowError("Please choose a ComfyUI workflow .json file.")
-    return import_workflow(p.read_bytes(), p.name, name)
+    if p.suffix.lower() not in (".json", ".py"):
+        raise WorkflowError("Please choose a ComfyUI workflow .json file or a Python workflow .py script.")
+    return import_workflow(p.read_bytes(), p.name, name, source_path=str(p.resolve()))
+
+
+# ----------------------------------------------------------------- sample library
+def _samples_dir() -> Path:
+    return PROJECT_ROOT / "samples" / "workflows"
+
+
+def list_samples() -> List[Dict[str, Any]]:
+    folder = _samples_dir()
+    index = {}
+    lib = folder / "library.json"
+    if lib.exists():
+        index = {e["file"]: e for e in json.loads(lib.read_text(encoding="utf-8"))}
+    opened = {}
+    for d in _root().iterdir():
+        if (d / "meta.json").exists():
+            sp = json.loads((d / "meta.json").read_text(encoding="utf-8")).get("source_path")
+            if sp:
+                opened[Path(sp).name if Path(sp).parent == folder.resolve() else sp] = d.name
+    items = []
+    for f in sorted(folder.glob("*")):
+        if f.suffix.lower() not in (".json", ".py") or f.name == "library.json":
+            continue
+        e = index.get(f.name, {})
+        items.append({
+            "file": f.name,
+            "name": e.get("name", f.stem.replace("_", " ").title()),
+            "description": e.get("description", ""),
+            "kind": e.get("kind", "image"),
+            "format": "python" if f.suffix.lower() == ".py" else "json",
+            "path": str(f),
+            "workflow_id": opened.get(f.name),
+        })
+    order = list(index)
+    items.sort(key=lambda i: order.index(i["file"]) if i["file"] in order else len(order))
+    return items
+
+
+def open_sample(file: str) -> Dict[str, Any]:
+    sample = next((s for s in list_samples() if s["file"] == file), None)
+    if sample is None:
+        raise WorkflowError(f"Sample '{file}' not found.")
+    if sample["workflow_id"] and _meta_path(sample["workflow_id"]).exists():
+        return get(sample["workflow_id"])
+    p = Path(sample["path"])
+    return import_workflow(p.read_bytes(), p.name, sample["name"], source_path=str(p.resolve()))
+
+
+def seed_samples() -> None:
+    """Adds the sample library to the Workflows list once (first start)."""
+    marker = get_settings().data_dir / ".samples_added"
+    if marker.exists():
+        return
+    for sample in list_samples():
+        try:
+            open_sample(sample["file"])
+        except (WorkflowError, OSError):
+            continue
+    marker.write_text(_now(), encoding="utf-8")
 
 
 # ----------------------------------------------------------------- queries
@@ -211,10 +324,15 @@ def record_run(wid: str, run_id: str, status: str) -> None:
 
 
 # ----------------------------------------------------------------- build
-def build(wid: str) -> Workflow:
-    """Imports the workflow's .py and returns ``build_workflow()``."""
-    _check_id(wid)
-    path = _root() / wid / "workflow.py"
+_prompt_cache: Dict[str, Any] = {}
+
+
+def _load_script(path: Path, wid: str) -> Workflow:
+    """Executes a workflow script and returns its Workflow.
+
+    Uses ``build_workflow()``; older scripts are accepted too when they define a
+    single function without required arguments that returns a Workflow.
+    """
     mod_name = f"comfyflow_wf_{wid}_{uuid.uuid4().hex[:6]}"
     spec = importlib.util.spec_from_file_location(mod_name, path)
     if spec is None or spec.loader is None:
@@ -222,21 +340,49 @@ def build(wid: str) -> Workflow:
     module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
-        wf = module.build_workflow()
+        builder = getattr(module, "build_workflow", None)
+        if builder is None:
+            candidates = [
+                f for n, f in vars(module).items()
+                if inspect.isfunction(f) and f.__module__ == mod_name and not n.startswith("_")
+                and all(p.default is not inspect.Parameter.empty or p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
+                        for p in inspect.signature(f).parameters.values())
+            ]
+            if len(candidates) != 1:
+                raise WorkflowError(
+                    "The script must define build_workflow() returning a Workflow "
+                    "(see samples/workflows/*.py for examples)."
+                )
+            builder = candidates[0]
+        wf = builder()
+    except WorkflowError:
+        raise
     except Exception as e:  # noqa: BLE001 - user-editable script
         raise WorkflowError(f"The workflow script failed to build: {type(e).__name__}: {e}") from e
     finally:
         sys.modules.pop(mod_name, None)
     if not isinstance(wf, Workflow):
-        raise WorkflowError("build_workflow() must return a Workflow.")
+        raise WorkflowError("build_workflow() must return a cb2c_py Workflow.")
     return wf
 
 
+def build(wid: str) -> Workflow:
+    """Imports the workflow's .py and returns its Workflow."""
+    _check_id(wid)
+    return _load_script(_root() / wid / "workflow.py", wid)
+
+
 def _prompt(wid: str) -> Dict[str, Any]:
+    path = _root() / wid / "workflow.py"
+    key = f"{wid}:{path.stat().st_mtime_ns}"
+    if key in _prompt_cache:
+        return _prompt_cache[key]
     try:
-        return build(wid).to_prompt()
+        prompt = build(wid).to_prompt()
     except WorkflowError:
-        return json.loads((_root() / wid / "prompt.json").read_text(encoding="utf-8"))
+        prompt = json.loads((_root() / wid / "prompt.json").read_text(encoding="utf-8"))
+    _prompt_cache[key] = prompt
+    return prompt
 
 
 # ----------------------------------------------------------------- models
@@ -323,6 +469,50 @@ def download_missing(wid: str) -> List[Dict[str, Any]]:
         if row["status"] in ("missing", "error"):
             started.append(downloader.start(row["registry_name"], row["name"]))
     return started
+
+
+def resolve_models(wid: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Saves the URL or local file path the user entered for missing models.
+
+    ``items``: ``[{name, value, category?}]`` where value is a download URL or the
+    full path of the model file (or of the folder that contains it).
+    """
+    rows = {r["name"]: r for r in detect_models(wid)}
+    errors: List[str] = []
+    updates = []
+    for it in items:
+        name = it.get("name", "")
+        value = str(it.get("value") or "").strip().strip('"')
+        row = rows.get(name)
+        if row is None:
+            errors.append(f"{name}: this model is not used by the workflow.")
+            continue
+        if not value:
+            errors.append(f"{name}: enter a download URL or the path of the model file.")
+            continue
+        if is_local_source(value):
+            p = local_source_path(value)
+            if p.is_dir():
+                p = p / Path(name).name
+            if not p.is_file():
+                errors.append(f"{name}: no file at {p}")
+                continue
+            value = str(p)
+        elif not value.lower().startswith(("http://", "https://")):
+            errors.append(f"{name}: '{value}' is neither a URL nor a file path.")
+            continue
+        entry = registry.get(row["registry_name"]) or {"name": row["registry_name"], "save_dir": ""}
+        category = it.get("category") or row["category"]
+        updates.append(({**entry, "url": value, "category": category}, entry["name"]))
+    if errors:
+        raise WorkflowError("Some entries need a fix:\n" + "\n".join(errors))
+    for entry, original in updates:
+        try:
+            registry.upsert(entry, original_name=original)
+        except RegistryError as e:
+            raise WorkflowError(str(e)) from e
+        downloader.clear(original, *[n for n, r in rows.items() if r["registry_name"] == original])
+    return detect_models(wid)
 
 
 # ----------------------------------------------------------------- params

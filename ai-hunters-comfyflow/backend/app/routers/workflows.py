@@ -1,5 +1,5 @@
 """Workflow import (upload or local path), conversion output, models and parameters."""
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
@@ -11,6 +11,22 @@ from app.services.workflows import WorkflowError
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
 MAX_JSON = 50 * 1024 * 1024
+
+samples_router = APIRouter(prefix="/api/samples", tags=["samples"])
+
+
+@samples_router.get("")
+def list_samples():
+    return {"samples": workflows.list_samples()}
+
+
+class SampleIn(BaseModel):
+    file: str
+
+
+@samples_router.post("/open")
+def open_sample(body: SampleIn):
+    return _guard(workflows.open_sample, body.file)
 
 
 def _guard(fn, *args, status=400):
@@ -30,6 +46,8 @@ async def upload(file: UploadFile = File(...), name: Optional[str] = Form(None))
     raw = await file.read()
     if len(raw) > MAX_JSON:
         raise HTTPException(413, "Workflow file is larger than 50 MB.")
+    if not (file.filename or "").lower().endswith((".json", ".py")):
+        raise HTTPException(400, "Choose a ComfyUI workflow .json file or a Python workflow .py script.")
     return _guard(workflows.import_workflow, raw, file.filename or "workflow.json", name)
 
 
@@ -77,6 +95,22 @@ def models(wid: str):
 @router.post("/{wid}/models/download-missing")
 def download_missing(wid: str):
     return {"started": _guard(workflows.download_missing, wid)}
+
+
+class ResolveItem(BaseModel):
+    name: str
+    value: str
+    category: Optional[str] = None
+
+
+class ResolveIn(BaseModel):
+    items: List[ResolveItem]
+
+
+@router.post("/{wid}/models/resolve")
+def resolve_models(wid: str, body: ResolveIn):
+    rows = _guard(workflows.resolve_models, wid, [i.model_dump() for i in body.items])
+    return {"models": rows, "ready": sum(1 for r in rows if r["status"] == "ready"), "total": len(rows)}
 
 
 @router.get("/{wid}/parameters")
