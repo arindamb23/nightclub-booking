@@ -29,7 +29,7 @@ def _row(entry):
         status = "no_url"
     else:
         status = "missing"
-    return {**entry, "resolved_dir": str(registry.resolve_dir(entry)), "path": fs["path"], "size": fs["size"], "status": status, "job": job}
+    return {**entry, "resolved_dir": str(registry.resolve_dir(entry)), "path": fs["path"], "size": fs["size"], "partial": fs["partial"], "status": status, "job": job}
 
 
 @router.get("")

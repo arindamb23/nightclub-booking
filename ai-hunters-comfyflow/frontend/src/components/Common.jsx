@@ -31,7 +31,7 @@ const MODEL_STATUS = {
   cancelled: ['', 'Cancelled'],
 }
 
-export function ModelStatus({ status, job }) {
+export function ModelStatus({ status, job, partial }) {
   const [cls, label] = MODEL_STATUS[status] || ['', status]
   const active = status === 'downloading' || status === 'queued'
   return (
@@ -41,11 +41,15 @@ export function ModelStatus({ status, job }) {
         <>
           <Progress percent={job?.percent} indeterminate={job?.percent == null} />
           <span className="small muted">
-            {formatBytes(job?.downloaded || 0)}{job?.total ? ` / ${formatBytes(job.total)}` : ''}{job?.speed ? ` · ${formatBytes(job.speed)}/s` : ''}
+            {formatBytes(job?.downloaded || 0)}{job?.total ? ` / ${formatBytes(job.total)}` : ''}{job?.speed && !job?.note ? ` · ${formatBytes(job.speed)}/s` : ''}
           </span>
+          {job?.note && <span className="small" style={{ color: 'var(--warning)' }}><Icon name="refresh" size={11} /> {job.note}</span>}
         </>
       )}
       {status === 'error' && job?.error && <span className="small" style={{ color: 'var(--danger)' }}>{job.error}</span>}
+      {(status === 'missing' || status === 'error') && partial > 0 && (
+        <span className="small muted">{formatBytes(partial)} already downloaded — Download resumes from there</span>
+      )}
     </div>
   )
 }

@@ -138,7 +138,9 @@ class ModelRegistry:
     def file_status(self, entry: Dict[str, Any], requested_name: Optional[str] = None) -> Dict[str, Any]:
         path = self.resolve_path(entry, requested_name)
         exists = path.is_file() and path.stat().st_size > 0
-        return {"path": str(path), "exists": exists, "size": path.stat().st_size if exists else 0}
+        part = path.with_name(path.name + ".part")
+        partial = part.stat().st_size if not exists and part.is_file() else 0
+        return {"path": str(path), "exists": exists, "size": path.stat().st_size if exists else 0, "partial": partial}
 
     # ------------------------------------------------------------ mutations
     def upsert(self, entry: Dict[str, Any], original_name: Optional[str] = None) -> Dict[str, Any]:

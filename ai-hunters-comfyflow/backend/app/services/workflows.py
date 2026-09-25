@@ -462,6 +462,7 @@ def detect_models_in_prompt(
             "resolved_dir": str(registry.resolve_dir(entry)),
             "path": fs["path"],
             "size": fs["size"],
+            "partial": fs["partial"],
             "status": status,
             "job": job,
         })

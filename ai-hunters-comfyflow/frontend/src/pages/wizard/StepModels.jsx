@@ -147,7 +147,7 @@ export default function StepModels({ workflow, onBack, onNext, onChanged }) {
         <input className="input input-sm input-mono" value={d.save_dir} placeholder="(default folder)" onChange={(e) => setDraft({ save_dir: e.target.value })} aria-label="Save location" />
       ) : <span className="small mono" title={r.resolved_dir}>{shortPath(r.resolved_dir)}</span>,
     },
-    { key: 'status', header: 'Status', render: (r) => <ModelStatus status={r.status} job={r.job} /> },
+    { key: 'status', header: 'Status', render: (r) => <ModelStatus status={r.status} job={r.job} partial={r.partial} /> },
     {
       key: 'actions', header: '', className: 'col-actions',
       render: (r) => isEditing(r) ? (

@@ -155,7 +155,7 @@ export default function Models() {
         </>
       ),
     },
-    { key: 'status', header: 'Status', render: (row) => row.name === NEW_KEY ? <span className="badge badge-accent">New</span> : <ModelStatus status={row.status} job={row.job} /> },
+    { key: 'status', header: 'Status', render: (row) => row.name === NEW_KEY ? <span className="badge badge-accent">New</span> : <ModelStatus status={row.status} job={row.job} partial={row.partial} /> },
     {
       key: 'actions', header: '', className: 'col-actions',
       render: (row) => isEditing(row) ? (

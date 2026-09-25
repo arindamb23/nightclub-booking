@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.4
+# AI Hunters ComfyFlow v1.0.5
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -158,7 +158,7 @@ ai-hunters-comfyflow/
 │  │  └─ templates/runner/          command-line runners for the templates (5) + input images
 │  ├─ json-workflows/               input folder for the command-line JSON converter
 │  ├─ tools/fake_comfyui.py         ComfyUI stand-in for tests and GPU-less demos
-│  └─ tests/                        pytest suite (57 tests)
+│  └─ tests/                        pytest suite (60 tests)
 └─ frontend/                        React 18 + Vite, light theme, modal system
    └─ src/ pages · components · context · styles/theme-light.css
 ```
@@ -181,7 +181,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 57 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 60 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 
@@ -190,6 +190,11 @@ cd backend
 * **A download in Setup.bat fails** – check the internet connection / company proxy and run Setup.bat again;
   finished steps are skipped.
 * **“ComfyUI not installed / offline”** – run `Setup.bat`, then `Start-all.bat`. The first ComfyUI start takes a minute.
+* **“Connection broken: IncompleteRead” / a download stops part-way** – large model servers (e.g. the Hugging Face
+  CDN) sometimes close long connections. Downloads resume automatically from the bytes already saved
+  (`<model>.part`, shown as “… already downloaded”) and only stop after 6 attempts in a row without progress;
+  press **Download** to continue from the same point. Permanent errors (401/403/404, a web page instead of a file)
+  are not retried.
 * **A download fails with 401/403** – the model is gated: add a Hugging Face token in Settings (and accept the
   licence on the model page) or a Civitai key.
 * **A node shows as GenericNode / widget values look wrong** – install the custom node (add it to

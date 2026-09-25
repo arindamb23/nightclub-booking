@@ -367,7 +367,7 @@ export default function Generate() {
                       <div className="small mono truncate" title={m.name}>{m.name}</div>
                       <div className="cell-sub">{m.category}</div>
                     </div>
-                    <ModelStatus status={m.status} job={m.job} />
+                    <ModelStatus status={m.status} job={m.job} partial={m.partial} />
                   </div>
                 ))}
                 {models && ready < models.length && (
