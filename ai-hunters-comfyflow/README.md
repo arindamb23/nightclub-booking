@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.6
+# AI Hunters ComfyFlow v1.0.7
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -73,6 +73,11 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
   says what happens before the first node (uploading inputs, sending to ComfyUI, *Queued in ComfyUI*).
   While a workflow runs, its **Workflow editor** shows the same states on the cards with a banner and the button.
   Live previews need ComfyUI started with `--preview-method auto` (Start-all.bat and Settings → Start ComfyUI add it).
+  The side panel also shows **GPU memory and system RAM** (from ComfyUI), warns when the run is **queued behind
+  another ComfyUI job** (with *Stop the other jobs*), and when ComfyUI has been silent for a while. **Console** opens
+  ComfyUI's own output (model loading, `loaded partially`, out-of-memory errors) – recorded in `logs\comfyui.log`
+  when ComfyUI is started by Start-all.bat or Settings (the ComfyUI window still shows everything too).
+  When the run succeeds the result opens in the image / video preview automatically.
 
 * **Generate** (sidebar) – one screen for the four common jobs, each powered by a Python *template*:
 
@@ -186,14 +191,14 @@ ai-hunters-comfyflow/
 `GET /api/samples` · `POST /api/samples/open` ·
 `GET /api/templates` · `POST /api/templates/upload` · `DELETE /api/templates/{id}` ·
 `POST /api/templates/{id}/models|models/resolve|models/download-missing|generate` · `GET /api/templates/sample-images[/{name}]` ·
-`POST|GET /api/runs` · `GET|DELETE /api/runs/{id}` · `POST /api/runs/{id}/cancel` · `GET /api/runs/{id}/graph|preview` ·
+`POST|GET /api/runs` · `GET|DELETE /api/runs/{id}` · `POST /api/runs/{id}/cancel` · `GET /api/runs/{id}/graph|preview` · `GET /api/comfyui/log|stats` · `POST /api/comfyui/clear-queue` ·
 `GET /api/runs/{id}/files/{filename}[?download=1]` · `GET /api/runs/{id}/zip` · `POST|GET /api/uploads`
 
 ## Development
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 62 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 66 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 
@@ -207,8 +212,22 @@ cd backend
   (`<model>.part`, shown as “… already downloaded”) and only stop after 6 attempts in a row without progress;
   press **Download** to continue from the same point. Permanent errors (401/403/404, a web page instead of a file)
   are not retried.
-* **Several downloads at once keep dropping** – since v1.0.6 models download one by one (an existing `.env` with the
+* **Several downloads at once keep dropping** – since v1.0.7 models download one by one (an existing `.env` with the
   old value 2 is switched to 1 once on start). Keep *Downloads at the same time* at 1 for big models.
+* **“The workflow finished but produced no output files” although it has a Save node** – fixed in v1.0.7 (ComfyUI
+  reports success a moment before its history is stored; ComfyFlow now waits for it and also keeps the files ComfyUI
+  announces over the WebSocket).
+* **A video run (Wan 2.1 14B) stays at “Waiting” / 0 nodes** – open *Live node view*:
+  * *ComfyUI is busy with another job* → an older run is still loading or running inside ComfyUI (for example one
+    started before a restart of ComfyFlow). Press **Stop the other jobs**, or restart with Stop-all.bat / Start-all.bat.
+  * the nodes run but a loader, *CLIP Text Encode* or *KSampler* takes very long → open **Console**. Wan 2.1 14B
+    Q4_K_M (≈ 9.6 GB) plus the umt5-xxl text encoder (≈ 6.7 GB) need about **16 GB of models in RAM**: with 12 GB of
+    VRAM ComfyUI loads the model *partially* and streams the rest from RAM, so **32 GB of system RAM** is recommended
+    (with 16 GB Windows swaps to disk and it looks frozen).
+  * on 12 GB cards start small: *Duration* 2–3 s, 20 steps, 832×480 or 480×480; the first run is always the slowest.
+  * NVIDIA Control Panel → *Manage 3D settings* → **CUDA – Sysmem Fallback Policy: Prefer No Sysmem Fallback**
+    stops the driver from silently using (very slow) shared memory; if ComfyUI then reports out of memory, add
+    `--lowvram` (or `--reserve-vram 1`) in *Settings → ComfyUI extra arguments* and restart ComfyUI.
 * **Live node view shows no preview image** – the preview needs `--preview-method auto`; if you start ComfyUI yourself,
   add it to its command line. Node states and timings work without it.
 * **A download fails with 401/403** – the model is gated: add a Hugging Face token in Settings (and accept the

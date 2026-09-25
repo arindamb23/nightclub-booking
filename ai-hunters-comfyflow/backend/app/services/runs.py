@@ -257,6 +257,35 @@ class RunManager:
                 self._publish(run)
             time.sleep(1.0)
 
+    def _watch(self, run: Dict[str, Any], finished: threading.Event) -> None:
+        """While a run is in ComfyUI: GPU/RAM usage, and why it has not started (queued behind another job)."""
+        prog = run["progress"]
+        while not finished.wait(2.0):
+            changed = False
+            st = comfy.stats()
+            if st and st != prog.get("resources"):
+                prog["resources"] = st
+                changed = True
+            pid = run.get("comfy_prompt_id")
+            if pid and prog.get("node") is None:
+                q = comfy.queue()
+                if q is not None:
+                    running_ids = [p for _, p in q["running"]]
+                    mine = next((n for n, p in q["pending"] if p == pid), None)
+                    if pid in running_ids:
+                        ahead, phase = 0, "ComfyUI is preparing the workflow"
+                    elif mine is not None:
+                        ahead = len(running_ids) + sum(1 for n, p in q["pending"] if n < mine)
+                        phase = (f"Waiting in the ComfyUI queue: {ahead} job(s) ahead"
+                                 + (" (another workflow is still running in ComfyUI)" if running_ids else ""))
+                    else:
+                        ahead, phase = 0, prog.get("phase") or ""
+                    if (ahead, phase) != (prog.get("queue_ahead"), prog.get("phase")):
+                        prog["queue_ahead"], prog["phase"] = ahead, phase
+                        changed = True
+            if changed and not finished.is_set():
+                self._publish(run)
+
     def cancel(self, run_id: str) -> Dict[str, Any]:
         ev = self._cancel.get(run_id)
         if ev is None:
@@ -300,6 +329,7 @@ class RunManager:
         started = time.time()
         runner = comfy.runner()
         executed: set = set()
+        finished = threading.Event()
 
         prog = run["progress"]
         prog.setdefault("nodes", {})  # node id -> {"state": running|done|cached|error, "started", "ended"}
@@ -325,6 +355,12 @@ class RunManager:
             if mtype == "preview_image":  # binary latent preview frame from ComfyUI
                 previews.put(run["id"], data.get("image") or b"", data.get("mime") or "image/jpeg")
                 bus.publish({"type": "run_preview", "run_id": run["id"], "node": prog.get("node"), "n": previews.count(run["id"])})
+                return
+            prog["last_event"] = round(time.time(), 1)
+            if mtype == "prompt_queued":
+                run["comfy_prompt_id"] = data.get("prompt_id")
+                prog["phase"] = "Queued in ComfyUI"
+                self._publish(run)
                 return
             if mtype == "status":
                 remaining = ((data.get("status") or {}).get("exec_info") or {}).get("queue_remaining")
@@ -383,6 +419,7 @@ class RunManager:
             run["status"] = "running"
             self._save(run)
             self._publish(run)
+            threading.Thread(target=self._watch, args=(run, finished), daemon=True, name=f"watch-{run['id']}").start()
             outputs = runner.run_workflow(
                 wf,
                 progress_callback=on_message,
@@ -416,6 +453,7 @@ class RunManager:
             run["status"] = "failed"
             run["error"] = f"{type(e).__name__}: {e}"
         finally:
+            finished.set()
             prog["phase"] = ""
             if run["status"] != "succeeded":
                 for entry in prog["nodes"].values():

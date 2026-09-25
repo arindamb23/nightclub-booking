@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.6
+# AI Hunters ComfyFlow v1.0.7
 """FastAPI application for AI Hunters ComfyFlow."""
 import asyncio
 from contextlib import asynccontextmanager
@@ -16,7 +16,7 @@ from app.services import workflows as workflows_service
 
 
 def _migrate_parallel_downloads(settings) -> None:
-    """v1.0.6: models download one at a time by default. Moves the old default (2) to 1 once."""
+    """v1.0.7: models download one at a time by default. Moves the old default (2) to 1 once."""
     marker = settings.data_dir / ".downloads_one_by_one"
     if marker.exists():
         return

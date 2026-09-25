@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title AI Hunters ComfyFlow v1.0.6 - Start
+title AI Hunters ComfyFlow v1.0.7 - Start
 cd /d "%~dp0"
 set "ROOT=%~dp0"
 rem Portable tools downloaded by Setup.bat take precedence
@@ -17,7 +17,7 @@ if not exist "backend\.venv\Scripts\python.exe" goto :need_setup
 if not exist "frontend\node_modules" goto :need_setup
 
 echo.
-echo  AI Hunters ComfyFlow v1.0.6
+echo  AI Hunters ComfyFlow v1.0.7
 echo  ----------------------------------------------
 
 rem ---------------------------------------------------------------- ComfyUI
@@ -34,8 +34,8 @@ if not exist "!COMFY_DIR!\main.py" (
   goto :backend
 )
 "backend\.venv\Scripts\python.exe" "scripts\prestart.py"
-echo [..] Starting ComfyUI on port %COMFYUI_PORT%
-start "ComfyFlow-ComfyUI" /min cmd /k ""!COMFY_PY!" "!COMFY_DIR!\main.py" --listen %COMFYUI_HOST% --port %COMFYUI_PORT% --preview-method auto %COMFYUI_EXTRA_ARGS%"
+echo [..] Starting ComfyUI on port %COMFYUI_PORT% (console also saved to logs\comfyui.log)
+start "ComfyFlow-ComfyUI" /min cmd /k ""!COMFY_PY!" "%ROOT%scripts\run_comfyui.py" "!COMFY_DIR!" --listen %COMFYUI_HOST% --port %COMFYUI_PORT% --preview-method auto %COMFYUI_EXTRA_ARGS%"
 
 :backend
 rem ---------------------------------------------------------------- backend

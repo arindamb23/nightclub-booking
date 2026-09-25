@@ -468,3 +468,19 @@ details.advanced summary { cursor: pointer; font-weight: 600; color: var(--text-
 .editor-live { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: #f7e9e2; border-bottom: 1px solid rgba(201,100,66,.3); font-size: 13px; }
 .editor-live .grow { flex: 1; min-width: 0; }
 @media (max-width: 900px) { .live-side { display: none; } }
+
+/* ---------------------------------------------------------------- run health + ComfyUI console (v1.0.7) */
+.live-health { display: flex; flex-direction: column; gap: 10px; }
+.live-health:empty { display: none; }
+.live-meters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.live-health.compact .live-meters { background: none; }
+.live-meters > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.meter { height: 5px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.meter i { display: block; height: 100%; background: #3f6b98; border-radius: 4px; transition: width .4s; }
+.meter-hot i { background: #b3372e; }
+.live-console { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; min-height: 180px; background: #1f1e1d; color: #e8e6dc; display: flex; flex-direction: column; z-index: 6; border-top: 1px solid #000; }
+.live-console-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 14px; background: #2b2a27; }
+.live-console-head .muted { color: #a8a69f; flex: 1; }
+.live-console-head .btn { color: #e8e6dc; }
+.live-console pre { flex: 1; margin: 0; padding: 10px 14px; overflow: auto; font: 12px/1.45 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+.btn-active { background: var(--surface-2); border-color: var(--border-strong); }

@@ -2,6 +2,8 @@
 import asyncio
 import json
 
+import requests
+
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -89,6 +91,38 @@ def comfy_start():
         return comfy.start()
     except RuntimeError as e:
         raise HTTPException(400, str(e))
+
+
+@router.get("/comfyui/log")
+def comfy_log(lines: int = 60):
+    """Tail of ComfyUI's console (logs/comfyui.log, written when ComfyUI is started by ComfyFlow)."""
+    return comfy.log_tail(lines)
+
+
+@router.get("/comfyui/stats")
+def comfy_stats():
+    return {"stats": comfy.stats(), "queue": comfy.queue()}
+
+
+class ClearQueueIn(BaseModel):
+    keep_run_id: Optional[str] = None
+
+
+@router.post("/comfyui/clear-queue")
+def comfy_clear_queue(body: ClearQueueIn):
+    """Removes other jobs from ComfyUI's queue (and stops the running one) so this run can start."""
+    from app.services.runs import RunError
+
+    keep = None
+    if body.keep_run_id:
+        try:
+            keep = runs.get(body.keep_run_id).get("comfy_prompt_id")
+        except RunError:
+            keep = None
+    try:
+        return comfy.clear_other_jobs(keep)
+    except (RuntimeError, requests.RequestException) as e:
+        raise HTTPException(409, str(e))
 
 
 @router.post("/comfyui/sync-nodes")

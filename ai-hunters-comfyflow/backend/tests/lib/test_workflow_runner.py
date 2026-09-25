@@ -108,8 +108,52 @@ def test_run_workflow_downloads_each_file_once(runner, mocker, tmp_path):
     assert [s["filename"] for s in saved] == ["out.png", "out2.png"]
     assert (tmp_path / "out.png").read_bytes() == b"PNGout.png"
     assert sum(1 for c in get.call_args_list if "/view" in c.args[0]) == 2
-    assert len(messages) == 3
+    assert [m["type"] for m in messages] == ["prompt_queued", "executing", "progress", "executing"]
     assert ws.closed
+
+
+def test_outputs_found_when_history_is_written_after_success(runner, mocker, tmp_path):
+    """Real ComfyUI sends execution_success before it stores /history (the v1.0.6 'no output files' bug)."""
+    ws = FakeWS([
+        {"type": "executing", "data": {"node": "9", "prompt_id": "p1"}},
+        {"type": "executed", "data": {"node": "9", "prompt_id": "p1",
+                                      "output": {"images": [{"filename": "ws.png", "subfolder": "", "type": "output"}]}}},
+        {"type": "execution_success", "data": {"prompt_id": "p1"}},
+    ])
+    mocker.patch("websocket.WebSocket", return_value=ws)
+    mocker.patch("requests.post", return_value=FakeResponse(200, {"prompt_id": "p1"}))
+    mocker.patch("time.sleep")
+    calls = {"n": 0}
+
+    def fake_get(url, **kw):
+        if "/history/" in url:
+            calls["n"] += 1
+            if calls["n"] < 3:
+                return FakeResponse(200, {})  # not stored yet
+            return FakeResponse(200, {"p1": {"status": {"completed": True}, "outputs": {
+                "9": {"images": [{"filename": "hist.png", "subfolder": "", "type": "output"}]}}}})
+        return FakeResponse(200, content=b"PNG")
+
+    mocker.patch("requests.get", side_effect=fake_get)
+    wf = Workflow()
+    wf.add_node(LoadImage(image="x.png"))
+    saved = runner.run_workflow(wf, output_dir=str(tmp_path))
+    assert [s["filename"] for s in saved] == ["hist.png"] and calls["n"] == 3
+
+
+def test_websocket_outputs_used_when_history_stays_empty(runner, mocker, tmp_path):
+    ws = FakeWS([
+        {"type": "executed", "data": {"node": "9", "prompt_id": "p1",
+                                      "output": {"images": [{"filename": "ws.png", "subfolder": "", "type": "output"}]}}},
+        {"type": "execution_success", "data": {"prompt_id": "p1"}},
+    ])
+    mocker.patch("websocket.WebSocket", return_value=ws)
+    mocker.patch("requests.post", return_value=FakeResponse(200, {"prompt_id": "p1"}))
+    mocker.patch.object(runner, "_wait_for_history", return_value={})
+    mocker.patch("requests.get", return_value=FakeResponse(200, content=b"PNG"))
+    wf = Workflow()
+    wf.add_node(LoadImage(image="x.png"))
+    assert [s["filename"] for s in runner.run_workflow(wf, output_dir=str(tmp_path))] == ["ws.png"]
 
 
 def test_execution_error_raises_and_closes(runner, mocker, tmp_path):
@@ -128,9 +172,23 @@ def test_cancel_interrupts(runner, mocker, tmp_path):
     ev.set()
     mocker.patch("websocket.WebSocket", return_value=FakeWS([]))
     post = mocker.patch("requests.post", return_value=FakeResponse(200, {"prompt_id": "p1"}))
+    mocker.patch("requests.get", return_value=FakeResponse(200, {"queue_running": [[0, "p1", {}, {}, []]]}))
     with pytest.raises(WorkflowCancelled):
         runner.run_workflow(Workflow(), output_dir=str(tmp_path), cancel_event=ev)
     assert any("/interrupt" in c.args[0] for c in post.call_args_list)
+    assert any(c.kwargs.get("json") == {"delete": ["p1"]} for c in post.call_args_list)
+
+
+def test_cancel_while_queued_does_not_stop_another_job(runner, mocker, tmp_path):
+    import threading
+    ev = threading.Event()
+    ev.set()
+    mocker.patch("websocket.WebSocket", return_value=FakeWS([]))
+    post = mocker.patch("requests.post", return_value=FakeResponse(200, {"prompt_id": "p1"}))
+    mocker.patch("requests.get", return_value=FakeResponse(200, {"queue_running": [[0, "other", {}, {}, []]]}))
+    with pytest.raises(WorkflowCancelled):
+        runner.run_workflow(Workflow(), output_dir=str(tmp_path), cancel_event=ev)
+    assert not any("/interrupt" in c.args[0] for c in post.call_args_list)
 
 
 def test_upload_flag_uploads_local_image(runner, mocker, tmp_path):

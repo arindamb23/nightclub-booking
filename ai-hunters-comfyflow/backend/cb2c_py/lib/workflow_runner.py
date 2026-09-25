@@ -95,6 +95,16 @@ class WorkflowRunner:
         except requests.RequestException:
             pass
 
+    def cancel_prompt(self, prompt_id: str) -> None:
+        """Cancels one job: removes it from ComfyUI's queue, or interrupts it only if it is the one running."""
+        try:
+            requests.post(f"{self.base_url}/queue", json={"delete": [prompt_id]}, timeout=self.http_timeout)
+            running = requests.get(f"{self.base_url}/queue", timeout=self.http_timeout).json().get("queue_running") or []
+            if any(isinstance(it, list) and len(it) > 1 and it[1] == prompt_id for it in running):
+                self.interrupt()
+        except (requests.RequestException, ValueError):
+            self.interrupt()
+
     def upload_file(self, file_path: str, subfolder: str = "") -> str:
         """Uploads an image/video to ComfyUI's input folder; returns the name to use."""
         with open(file_path, "rb") as f:
@@ -150,6 +160,21 @@ class WorkflowRunner:
         r = requests.get(f"{self.base_url}/history/{prompt_id}", timeout=self.http_timeout)
         r.raise_for_status()
         return r.json()
+
+    def _wait_for_history(self, prompt_id: str, timeout: float = 30.0) -> Dict[str, Any]:
+        """ComfyUI sends ``execution_success`` *before* it stores the history entry: poll until it is there."""
+        deadline = time.time() + timeout
+        entry: Dict[str, Any] = {}
+        while True:
+            try:
+                entry = self._get_history(prompt_id).get(prompt_id) or {}
+            except requests.RequestException:
+                entry = {}
+            if entry:  # ComfyUI stores the entry once, complete with outputs and status
+                return entry
+            if time.time() >= deadline:
+                return entry
+            time.sleep(0.5)
 
     @staticmethod
     def collect_output_refs(history_entry: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -207,12 +232,13 @@ class WorkflowRunner:
         prompt_id: str,
         progress_callback: ProgressCallback,
         cancel_event: Optional[threading.Event],
+        ws_outputs: Optional[Dict[str, Any]] = None,
     ) -> None:
         started = time.time()
         ws.settimeout(1.0)
         while True:
             if cancel_event is not None and cancel_event.is_set():
-                self.interrupt()
+                self.cancel_prompt(prompt_id)  # never stops another workflow that happens to be running
                 raise WorkflowCancelled("Run cancelled")
             if self.max_duration and time.time() - started > self.max_duration:
                 self.interrupt()
@@ -235,6 +261,8 @@ class WorkflowRunner:
             if progress_callback:
                 progress_callback(message)
             mtype = message.get("type")
+            if mtype == "executed" and ws_outputs is not None and data.get("node") is not None:
+                ws_outputs[str(data["node"])] = data.get("output") or {}
             if mtype == "execution_error":
                 raise ComfyUIError(
                     f"{data.get('node_type', 'A node')} (ID {data.get('node_id')}) failed: "
@@ -257,9 +285,15 @@ class WorkflowRunner:
     ):
         """Queues ``prompt`` and yields ``(bytes, filename, ref)`` for every output file."""
         prompt_id = self._queue_prompt(prompt, client_id)["prompt_id"]
-        self._wait_for_completion(ws, prompt_id, progress_callback, cancel_event)
-        history = self._get_history(prompt_id).get(prompt_id, {})
-        for ref in self.collect_output_refs(history):
+        if progress_callback:
+            progress_callback({"type": "prompt_queued", "data": {"prompt_id": prompt_id}})
+        ws_outputs: Dict[str, Any] = {}
+        self._wait_for_completion(ws, prompt_id, progress_callback, cancel_event, ws_outputs)
+        history = self._wait_for_history(prompt_id)
+        refs = self.collect_output_refs(history)
+        if not refs and ws_outputs:  # history had no outputs: use the ones ComfyUI sent over the WebSocket
+            refs = self.collect_output_refs({"outputs": ws_outputs})
+        for ref in refs:
             data = self._get_file(ref["filename"], ref["subfolder"], ref["type"])
             yield data, ref["filename"], ref
 

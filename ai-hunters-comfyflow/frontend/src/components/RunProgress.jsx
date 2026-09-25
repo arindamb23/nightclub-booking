@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Progress, RunStatus } from './Common.jsx'
 import Icon from './Icon.jsx'
-import LiveRunView from '../pages/editor/LiveRunView.jsx'
+import LiveRunView, { RunHealth } from '../pages/editor/LiveRunView.jsx'
 import { Thumb, outputsToItems, usePreview } from './PreviewModals.jsx'
 import { api } from '../api.js'
 import { useEvent } from '../context/EventsContext.jsx'
@@ -76,12 +76,13 @@ export default function RunProgress({ run, title = 'Current run', onCancel }) {
         )}
         {nodePct != null && active && <div className="mt-8"><Progress percent={nodePct} /></div>}
       </div>
+      <div className="mt-16"><RunHealth run={run} compact onOpenConsole={() => setLive('console')} /></div>
       {items.length > 0 && (
         <div className="thumbs mt-16">
           {items.map((item, i, all) => <Thumb key={item.filename} item={item} onClick={() => openPreview(all, i)} />)}
         </div>
       )}
-      {live && <LiveRunView run={run} onClose={() => setLive(false)} onCancel={onCancel} />}
+      {live && <LiveRunView run={run} showConsole={live === 'console'} onClose={() => setLive(false)} onCancel={onCancel} />}
     </>
   )
 }

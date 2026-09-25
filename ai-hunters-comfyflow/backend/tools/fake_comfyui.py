@@ -31,6 +31,7 @@ state: Dict[str, Any] = {"clients": {}, "history": {}, "interrupt": False, "dir"
 (state["dir"] / "output").mkdir()
 (state["dir"] / "input").mkdir()
 STEP_DELAY = 0.05
+HISTORY_DELAY = 0.6
 
 
 @app.get("/system_stats")
@@ -107,6 +108,14 @@ def _preview_frame() -> bytes:
 
 
 async def _execute(prompt_id: str, prompt: Dict[str, Any], cid: str):
+    state.setdefault("running", []).append(prompt_id)
+    try:
+        await _execute_inner(prompt_id, prompt, cid)
+    finally:
+        state["running"].remove(prompt_id)
+
+
+async def _execute_inner(prompt_id: str, prompt: Dict[str, Any], cid: str):
     state["interrupt"] = False
     await asyncio.sleep(0.2)
     await _send(cid, {"type": "execution_start", "data": {"prompt_id": prompt_id}})
@@ -142,9 +151,24 @@ async def _execute(prompt_id: str, prompt: Dict[str, Any], cid: str):
                 shutil.copy(SAMPLE_IMAGE, state["dir"] / "output" / name)
                 items.append({"filename": name, "subfolder": "", "type": "output"})
             outputs[node_id] = {"images": items}
-    state["history"][prompt_id] = {"outputs": outputs, "status": {"completed": True}}
-    await _send(cid, {"type": "executing", "data": {"node": None, "prompt_id": prompt_id}})
+        if node_id in outputs:
+            await _send(cid, {"type": "executed", "data": {"node": node_id, "output": outputs[node_id], "prompt_id": prompt_id}})
+    # Same order as real ComfyUI: execution_success first, the history entry is written a moment later
     await _send(cid, {"type": "execution_success", "data": {"prompt_id": prompt_id}})
+    await asyncio.sleep(HISTORY_DELAY)
+    state["history"][prompt_id] = {"outputs": outputs, "status": {"completed": True, "status_str": "success"}}
+    await _send(cid, {"type": "executing", "data": {"node": None, "prompt_id": prompt_id}})
+
+
+@app.get("/queue")
+async def get_queue():
+    return {"queue_running": [[i, pid, {}, {}, []] for i, pid in enumerate(state.setdefault("running", []))], "queue_pending": []}
+
+
+@app.post("/queue")
+async def edit_queue(request: Request):
+    state.setdefault("queue_edits", []).append(await request.json())
+    return {}
 
 
 @app.post("/prompt")

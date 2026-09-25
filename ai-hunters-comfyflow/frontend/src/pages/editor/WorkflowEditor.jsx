@@ -279,7 +279,7 @@ function EditorCanvas() {
         </div>
       )}
       {liveOpen && liveRun && (
-        <LiveRunView run={liveRun} onClose={() => setLiveOpen(false)}
+        <LiveRunView run={liveRun} autoPreview onClose={() => setLiveOpen(false)}
           onCancel={() => api.post(`/api/runs/${liveRun.id}/cancel`).catch((e) => msg.showError(e))} />
       )}
       <div className="editor-main">

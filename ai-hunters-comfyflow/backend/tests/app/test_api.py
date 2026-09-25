@@ -7,7 +7,7 @@ SAMPLES = Path(__file__).resolve().parents[3] / "samples"
 
 
 def test_health_and_system(client):
-    assert client.get("/api/health").json()["version"] == "1.0.6"
+    assert client.get("/api/health").json()["version"] == "1.0.7"
     s = client.get("/api/system").json()
     assert s["backend_port"] == 3015 and s["frontend_port"] == 5091
     assert s["comfyui"]["reachable"] is True
@@ -257,3 +257,28 @@ def test_uploads_and_delete(client):
 def test_dashboard(client):
     d = client.get("/api/dashboard").json()
     assert d["workflows"] >= 1 and d["models_total"] >= 17 and d["comfyui"]["reachable"]
+
+
+def test_run_watcher_reports_queue_and_gpu(monkeypatch):
+    import threading
+    from app.services import comfy as comfy_service
+    from app.services.runs import RunManager
+
+    monkeypatch.setattr(comfy_service, "stats", lambda: {"gpu": "RTX", "vram_total": 12, "vram_free": 2, "ram_total": 32, "ram_free": 8})
+    monkeypatch.setattr(comfy_service, "queue", lambda: {"running": [(5, "old-job")], "pending": [(6, "x"), (7, "mine")]})
+    published = []
+    monkeypatch.setattr(RunManager, "_publish", staticmethod(lambda r: published.append(dict(r["progress"]))))
+    monkeypatch.setattr("app.services.runs.time.sleep", lambda s: None)
+    run = {"id": "r1", "comfy_prompt_id": "mine", "progress": {"node": None, "phase": ""}}
+    finished = threading.Event()
+    calls = {"n": 0}
+    real_wait = finished.wait
+
+    def wait(t):  # two watcher rounds, then stop
+        calls["n"] += 1
+        return calls["n"] > 2 or real_wait(0)
+    finished.wait = wait
+    RunManager()._watch(run, finished)
+    prog = run["progress"]
+    assert prog["queue_ahead"] == 2 and "another workflow is still running" in prog["phase"]
+    assert prog["resources"]["vram_free"] == 2 and published

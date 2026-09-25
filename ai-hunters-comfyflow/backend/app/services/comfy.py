@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 import requests
 
-from app.config import get_settings
+from app.config import get_settings, PROJECT_ROOT
 from cb2c_py.lib.workflow_runner import WorkflowRunner
 from cb2c_py.tools.convert_workflow import NodeCatalog
 
@@ -153,7 +153,9 @@ def start() -> Dict[str, Any]:
         return {"started": False, "message": "ComfyUI is starting..."}
     python = s.comfyui_python if s.comfyui_python.exists() else Path("python")
     write_extra_model_paths()
-    args = [str(python), str(s.comfyui_dir / "main.py"), "--listen", s.comfyui_host, "--port", str(s.comfyui_port),
+    # run_comfyui.py copies the console to logs/comfyui.log (shown in the live node view)
+    args = [str(python), str(PROJECT_ROOT / "scripts" / "run_comfyui.py"), str(s.comfyui_dir),
+            "--listen", s.comfyui_host, "--port", str(s.comfyui_port),
             "--preview-method", "auto"]  # live sampling previews for the node view (extra args can override)
     if s.comfyui_extra_args:
         args += shlex.split(s.comfyui_extra_args, posix=os.name != "nt")
@@ -161,10 +163,71 @@ def start() -> Dict[str, Any]:
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE  # type: ignore[attr-defined]
     else:
-        log = open(s.data_dir / "comfyui.log", "ab")
-        kwargs.update(stdout=log, stderr=subprocess.STDOUT)
+        kwargs.update(stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     _process = subprocess.Popen(args, **kwargs)
     return {"started": True, "message": "ComfyUI is starting. It can take a minute the first time.", "pid": _process.pid}
+
+
+def log_path() -> Path:
+    return PROJECT_ROOT / "logs" / "comfyui.log"
+
+
+def log_tail(lines: int = 60) -> Dict[str, Any]:
+    """Last lines of ComfyUI's console (progress bars written with \r keep only their latest state)."""
+    p = log_path()
+    if not p.is_file():
+        return {"available": False, "lines": [], "path": str(p)}
+    size = p.stat().st_size
+    with open(p, "rb") as f:
+        f.seek(max(0, size - 64 * 1024))
+        raw = f.read().decode("utf-8", errors="replace")
+    out = []
+    for line in raw.replace("\r\n", "\n").split("\n"):
+        parts = [x for x in line.split("\r") if x.strip()]
+        if parts:
+            out.append(parts[-1][:400])
+    return {"available": True, "lines": out[-max(1, min(lines, 400)):], "path": str(p), "updated": p.stat().st_mtime}
+
+
+def stats() -> Optional[Dict[str, Any]]:
+    """GPU / RAM usage from ComfyUI's /system_stats (None when ComfyUI is offline)."""
+    s = get_settings()
+    try:
+        data = requests.get(f"{s.comfyui_url}/system_stats", timeout=2.5).json()
+    except (requests.RequestException, ValueError):
+        return None
+    system = data.get("system") or {}
+    dev = (data.get("devices") or [{}])[0]
+    return {
+        "gpu": dev.get("name"), "vram_total": dev.get("vram_total"), "vram_free": dev.get("vram_free"),
+        "ram_total": system.get("ram_total"), "ram_free": system.get("ram_free"),
+    }
+
+
+def queue() -> Optional[Dict[str, Any]]:
+    s = get_settings()
+    try:
+        data = requests.get(f"{s.comfyui_url}/queue", timeout=2.5).json()
+    except (requests.RequestException, ValueError):
+        return None
+    ids = lambda items: [(it[0], it[1]) for it in items or [] if isinstance(it, list) and len(it) > 1]  # noqa: E731
+    return {"running": ids(data.get("queue_running")), "pending": ids(data.get("queue_pending"))}
+
+
+def clear_other_jobs(keep_prompt_id: Optional[str]) -> Dict[str, Any]:
+    """Removes other waiting jobs from ComfyUI's queue and stops the one that is running (if it is not ours)."""
+    s = get_settings()
+    q = queue()
+    if q is None:
+        raise RuntimeError("ComfyUI is not reachable.")
+    others = [pid for _, pid in q["pending"] if pid != keep_prompt_id]
+    if others:
+        requests.post(f"{s.comfyui_url}/queue", json={"delete": others}, timeout=5)
+    stopped = False
+    if any(pid != keep_prompt_id for _, pid in q["running"]):
+        requests.post(f"{s.comfyui_url}/interrupt", json={}, timeout=5)
+        stopped = True
+    return {"removed": len(others), "stopped_running": stopped}
 
 
 def wait_until_ready(timeout: float = 5.0) -> bool:

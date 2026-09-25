@@ -9,6 +9,7 @@ import Icon from '../../components/Icon.jsx'
 import { Progress, RunStatus, Spinner } from '../../components/Common.jsx'
 import { outputsToItems, usePreview } from '../../components/PreviewModals.jsx'
 import { api } from '../../api.js'
+import { formatBytes } from '../../utils/format.js'
 import { useEvent } from '../../context/EventsContext.jsx'
 import { autoLayout, NODE_W } from './layout.js'
 import { ROLE, typeColor } from './theme.js'
@@ -31,12 +32,14 @@ function secs(entry, now) {
 const fmtSecs = (s) => (s == null ? '' : s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`)
 
 export function NodeRunBadge({ state, entry, step, now }) {
-  if (!state || state === 'waiting') return <span className="nstate nstate-waiting"><Icon name="clock" size={11} />Waiting</span>
-  const t = fmtSecs(secs(entry, now))
+  const st = state || 'waiting'
+  const t = st === 'waiting' || st === 'cached' ? '' : fmtSecs(secs(entry, now))
+  const text = [STATE_LABEL[st], st === 'running' && step?.max ? `${step.value}/${step.max}` : '', t].filter(Boolean).join(' · ')
+  const icon = { waiting: 'clock', error: 'x', cached: 'layers', stopped: 'stop' }[st] || 'check'
   return (
-    <span className={`nstate nstate-${state}`}>
-      {state === 'running' ? <span className="nstate-spin" /> : <Icon name={state === 'error' ? 'x' : state === 'cached' ? 'layers' : state === 'stopped' ? 'stop' : 'check'} size={11} />}
-      {STATE_LABEL[state]}{state === 'running' && step?.max ? ` · ${step.value}/${step.max}` : ''}{t && state !== 'cached' ? ` · ${t}` : ''}
+    <span key={st} className={`nstate nstate-${st}`}>
+      {st === 'running' ? <span className="nstate-spin" /> : <Icon name={icon} size={11} />}
+      <span>{text}</span>
     </span>
   )
 }
@@ -184,7 +187,82 @@ function Canvas({ run, graph, follow }) {
   )
 }
 
-function Timeline({ run, graph, onFocus }) {
+const STALL_SECS = 45
+
+// What ComfyUI is doing when the nodes do not move: queue, GPU / RAM, silence
+export function RunHealth({ run, onOpenConsole, compact = false }) {
+  const active = !DONE.includes(run.status)
+  const now = useNow(active)
+  const prog = run.progress || {}
+  const res = prog.resources
+  const [busy, setBusy] = useState(false)
+  if (!active || run.status === 'preparing') return null
+  const quiet = prog.last_event ? now - prog.last_event : null
+  const stalled = quiet != null && quiet > STALL_SECS
+  const vramUsed = res?.vram_total && res.vram_free != null ? res.vram_total - res.vram_free : null
+  const vramPct = vramUsed != null ? (vramUsed / res.vram_total) * 100 : null
+  const ramPct = res?.ram_total && res.ram_free != null ? ((res.ram_total - res.ram_free) / res.ram_total) * 100 : null
+  const clear = async () => {
+    setBusy(true)
+    try { await api.post('/api/comfyui/clear-queue', { keep_run_id: run.id }) } catch { /* shown by the next update */ }
+    setBusy(false)
+  }
+  return (
+    <div className={`live-health ${compact ? 'compact' : ''}`}>
+      {(vramPct != null || ramPct != null) && (
+        <div className="live-meters">
+          {vramPct != null && (
+            <div title={res.gpu || 'GPU'}><span className="small muted">GPU memory</span><b className="small">{formatBytes(vramUsed)} / {formatBytes(res.vram_total)}</b>
+              <div className={`meter ${vramPct > 92 ? 'meter-hot' : ''}`}><i style={{ width: `${vramPct}%` }} /></div></div>
+          )}
+          {ramPct != null && (
+            <div><span className="small muted">System RAM</span><b className="small">{formatBytes(res.ram_total - (res.ram_free || 0))} / {formatBytes(res.ram_total)}</b>
+              <div className={`meter ${ramPct > 92 ? 'meter-hot' : ''}`}><i style={{ width: `${ramPct}%` }} /></div></div>
+          )}
+        </div>
+      )}
+      {prog.queue_ahead > 0 && (
+        <div className="callout callout-warning small"><Icon name="clock" /><div style={{ flex: 1 }}>
+          <b>ComfyUI is busy with another job</b> ({prog.queue_ahead} ahead). This run starts when it finishes — often an older run that is still loading or running.
+          <div className="mt-8"><button className="btn btn-sm" onClick={clear} disabled={busy}>{busy ? <Spinner size={13} /> : <Icon name="x" size={13} />}Stop the other jobs</button></div>
+        </div></div>
+      )}
+      {stalled && !prog.queue_ahead && (
+        <div className="callout callout-info small"><Icon name="info" /><div style={{ flex: 1 }}>
+          No update from ComfyUI for {Math.floor(quiet / 60) ? `${Math.floor(quiet / 60)}m ` : ''}{Math.round(quiet % 60)}s.
+          {' '}{prog.node ? 'Big models (video, 14B) can take several minutes to load, longer when RAM is full and Windows uses the page file.' : 'ComfyUI has not started this workflow yet.'}
+          {onOpenConsole && <div className="mt-8"><button className="btn btn-sm" onClick={onOpenConsole}><Icon name="code" size={13} />Show ComfyUI console</button></div>}
+        </div></div>
+      )}
+    </div>
+  )
+}
+
+export function ComfyConsole({ active, onClose }) {
+  const [log, setLog] = useState(null)
+  const box = useRef(null)
+  useEffect(() => {
+    let alive = true
+    const load = () => api.get('/api/comfyui/log?lines=120').then((d) => { if (alive) setLog(d) }).catch(() => {})
+    load()
+    const t = active ? setInterval(load, 2000) : null
+    return () => { alive = false; if (t) clearInterval(t) }
+  }, [active])
+  useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight }, [log])
+  return (
+    <div className="live-console">
+      <div className="live-console-head">
+        <b className="small">ComfyUI console</b>
+        <span className="small muted truncate">{log?.available ? log.path : ''}</span>
+        {onClose && <button className="btn btn-ghost icon-btn" onClick={onClose} aria-label="Hide console"><Icon name="x" size={14} /></button>}
+      </div>
+      <pre ref={box}>{!log ? 'Loading…' : log.available ? log.lines.join('\n') || '(empty)'
+        : 'The console is recorded when ComfyUI is started by Start-all.bat or Settings → Start ComfyUI (v1.0.7 or newer). Restart ComfyUI with Stop-all.bat and Start-all.bat to see it here.'}</pre>
+    </div>
+  )
+}
+
+function Timeline({ run, graph, onFocus, health }) {
   const active = !DONE.includes(run.status)
   const now = useNow(active)
   const prog = run.progress || {}
@@ -194,6 +272,7 @@ function Timeline({ run, graph, onFocus }) {
   const waiting = graph.nodes.length - entries.length
   return (
     <aside className="live-side">
+      {health}
       <div className="live-side-head"><b>Execution order</b><span className="muted small">{entries.length} / {graph.nodes.length}</span></div>
       <ol className="live-list">
         {entries.map(([nid, e], i) => (
@@ -215,8 +294,11 @@ function Timeline({ run, graph, onFocus }) {
   )
 }
 
-function Inner({ run: initial, onClose, onCancel }) {
+function Inner({ run: initial, onClose, onCancel, autoPreview = false, showConsole = false }) {
   const [run, setRun] = useState(initial)
+  const [consoleOpen, setConsoleOpen] = useState(showConsole)
+  const openPreview = usePreview()
+  const previewed = useRef(DONE.includes(initial.status))
   const [graph, setGraph] = useState(null)
   const [error, setError] = useState(null)
   const [follow, setFollow] = useState(true)
@@ -225,11 +307,18 @@ function Inner({ run: initial, onClose, onCancel }) {
 
   useEffect(() => { setRun((r) => (initial.id === r.id ? { ...r, ...initial } : initial)) }, [initial])
   useEvent('run', (ev) => { if (ev.run.id === run.id) setRun(ev.run) })
+  // results open in the preview when the run finishes (the Run / Generate screens do it themselves)
+  useEffect(() => {
+    if (!autoPreview || previewed.current || run.status !== 'succeeded') return
+    previewed.current = true
+    const items = outputsToItems(run)
+    if (items.length) openPreview(items, 0)
+  }, [run, autoPreview, openPreview])
   useEffect(() => {
     api.get(`/api/runs/${initial.id}/graph`).then(setGraph).catch((e) => setError(e.message || String(e)))
   }, [initial.id])
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.modal-root')) onClose() }
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
     ref.current?.focus()
@@ -270,6 +359,7 @@ function Inner({ run: initial, onClose, onCancel }) {
         <label className="checkbox small" title="Keep the running node centred"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />Follow</label>
         <button className="btn" onClick={() => flow.fitView({ padding: 0.15, duration: 300 })}><Icon name="maximize" />Fit</button>
         {run.workflow_id && <Link className="btn" to={`/workflows/${run.workflow_id}/editor`} onClick={onClose}><Icon name="sliders" />Open editor</Link>}
+        <button className={`btn ${consoleOpen ? 'btn-active' : ''}`} onClick={() => setConsoleOpen((v) => !v)}><Icon name="code" />Console</button>
         {active && onCancel && <button className="btn btn-danger" onClick={onCancel}><Icon name="stop" size={13} />Cancel run</button>}
         <button className="btn btn-ghost icon-btn" onClick={onClose} aria-label="Close live view"><Icon name="x" /></button>
       </div>
@@ -281,8 +371,9 @@ function Inner({ run: initial, onClose, onCancel }) {
           <div className="legend">
             {['waiting', 'running', 'done', 'cached', 'error'].map((s) => <span key={s}><i className={`lg-${s}`} />{STATE_LABEL[s]}</span>)}
           </div>
+          {consoleOpen && <ComfyConsole active onClose={() => setConsoleOpen(false)} />}
         </div>
-        {graph && <Timeline run={run} graph={graph} onFocus={focus} />}
+        {graph && <Timeline run={run} graph={graph} onFocus={focus} health={<RunHealth run={run} onOpenConsole={() => setConsoleOpen(true)} />} />}
       </div>
     </div>
   )
