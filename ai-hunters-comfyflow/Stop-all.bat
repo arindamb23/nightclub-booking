@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title AI Hunters ComfyFlow v1.0.9 - Stop
+title AI Hunters ComfyFlow v1.0.10 - Stop
 cd /d "%~dp0"
 
 if not exist ".env" (

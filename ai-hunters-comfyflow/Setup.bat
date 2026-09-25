@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title AI Hunters ComfyFlow v1.0.9 - Setup
+title AI Hunters ComfyFlow v1.0.10 - Setup
 cd /d "%~dp0"
 set "ROOT=%~dp0"
 set "TOOLS=%ROOT%tools"
@@ -17,7 +17,7 @@ set "VCREDIST_URL=https://aka.ms/vs/17/release/vc_redist.x64.exe"
 
 echo.
 echo  ============================================================
-echo    AI Hunters ComfyFlow v1.0.9  -  Setup for Windows 11
+echo    AI Hunters ComfyFlow v1.0.10  -  Setup for Windows 11
 echo    Missing tools are downloaded automatically into .\tools
 echo  ============================================================
 echo.

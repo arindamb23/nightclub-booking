@@ -361,13 +361,34 @@ function Inner({ run: initial, onClose, onCancel, autoPreview = false, showConso
   useEffect(() => {
     api.get(`/api/runs/${initial.id}/graph`).then(setGraph).catch((e) => setError(e.message || String(e)))
   }, [initial.id])
+  // Back (button, Esc, the browser's Back / mouse back button) returns to the screen underneath; the run keeps going
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  const closed = useRef(false)
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.modal-root')) onClose() }
+    if (window.history.state?.comfyflowLive !== initial.id) {  // once, even when React runs the effect twice
+      window.history.pushState({ ...(window.history.state || {}), comfyflowLive: initial.id }, '')
+    }
+    const onPop = () => {
+      if (closed.current) return
+      closed.current = true
+      closeRef.current()
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const goBack = useCallback(() => {
+    if (window.history.state?.comfyflowLive === initial.id) window.history.back()  // popstate closes the view
+    else if (!closed.current) { closed.current = true; closeRef.current() }
+  }, [initial.id])
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.modal-root')) goBack() }
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
     ref.current?.focus()
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = '' }
-  }, [onClose])
+  }, [goBack])
 
   const focus = useCallback((nid) => {
     setFollow(false)
@@ -387,6 +408,9 @@ function Inner({ run: initial, onClose, onCancel, autoPreview = false, showConso
   return (
     <div className="live-root" role="dialog" aria-modal="true" aria-label="Live node progress" tabIndex={-1} ref={ref}>
       <div className="live-bar-top">
+        <button className="btn live-back" onClick={goBack} title={active ? 'Back to the previous screen — the run keeps going' : 'Back to the previous screen'}>
+          <Icon name="chevronLeft" />Back
+        </button>
         <div className="live-title">
           <span className="live-logo"><Icon name="workflow" size={18} /></span>
           <div style={{ minWidth: 0 }}>
@@ -400,11 +424,10 @@ function Inner({ run: initial, onClose, onCancel, autoPreview = false, showConso
         </div>
         <RunStatus status={run.status} />
         <label className="checkbox small" title="Keep the running node centred"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />Follow</label>
-        <button className="btn" onClick={() => safeFit(flow)}><Icon name="maximize" />Fit</button>
-        {run.workflow_id && <Link className="btn" to={`/workflows/${run.workflow_id}/editor`} onClick={onClose}><Icon name="sliders" />Open editor</Link>}
-        <button className={`btn ${consoleOpen ? 'btn-active' : ''}`} onClick={() => setConsoleOpen((v) => !v)}><Icon name="code" />Console</button>
-        {active && onCancel && <button className="btn btn-danger" onClick={onCancel}><Icon name="stop" size={13} />Cancel run</button>}
-        <button className="btn btn-ghost icon-btn" onClick={onClose} aria-label="Close live view"><Icon name="x" /></button>
+        <button className="btn" onClick={() => safeFit(flow)}><Icon name="maximize" /><span className="live-lbl">Fit</span></button>
+        {run.workflow_id && <Link className="btn" to={`/workflows/${run.workflow_id}/editor`} onClick={onClose}><Icon name="sliders" /><span className="live-lbl">Open editor</span></Link>}
+        <button className={`btn ${consoleOpen ? 'btn-active' : ''}`} onClick={() => setConsoleOpen((v) => !v)}><Icon name="code" /><span className="live-lbl">Console</span></button>
+        {active && onCancel && <button className="btn btn-danger" onClick={onCancel}><Icon name="stop" size={13} /><span className="live-lbl">Cancel run</span></button>}
       </div>
       <div className="live-main">
         <div className="live-canvas">

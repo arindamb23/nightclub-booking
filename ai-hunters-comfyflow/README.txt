@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.9
+# AI Hunters ComfyFlow v1.0.10
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -69,7 +69,9 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
   *Waiting → Running (step 12/20, elapsed time) → Done / Cached / Failed*, connections animate into the running
   node, the sampler shows ComfyUI's **live preview image** while it works, output nodes show their results
   (click to preview / play), and a side list shows the **execution order with the time of each node**.
-  *Follow* keeps the running node centred; *Cancel run* and *Open editor* are in the top bar. The top line also
+  *Follow* keeps the running node centred; *Cancel run* and *Open editor* are in the top bar. **Back** (top-left),
+  **Esc** or the browser's Back button return to the screen you came from – the run keeps going, and *Live node view*
+  on its card opens the view again. The top line also
   says what happens before the first node (uploading inputs, sending to ComfyUI, *Queued in ComfyUI*).
   While a workflow runs, its **Workflow editor** shows the same states on the cards with a banner and the button.
   Live previews need ComfyUI started with `--preview-method auto` (Start-all.bat and Settings → Start ComfyUI add it).
