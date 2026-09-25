@@ -22,6 +22,12 @@ from cb2c_py.nodes.generated import (
 )
 
 
+TEMPLATE = {
+    "name": "Stable Diffusion Text to Image",
+    "task": "text_to_image",
+    "description": "Classic checkpoint text-to-image (SD 1.5 / SDXL checkpoints such as RealVisXL).",
+}
+
 def text2image(
     pos_prompt: str,
     neg_prompt: str,

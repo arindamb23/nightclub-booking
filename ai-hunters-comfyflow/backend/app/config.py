@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, Optional
@@ -155,3 +156,15 @@ def update_env(updates: Dict[str, str]) -> Settings:
         lines.append(f"{key}={value}")
     ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return reload_settings()
+
+
+def replace_with_retry(tmp, path, attempts: int = 20) -> None:
+    """os.replace that tolerates a reader briefly holding the file open (Windows)."""
+    for i in range(attempts):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.05)

@@ -5,6 +5,7 @@ import { EventsProvider } from './context/EventsContext.jsx'
 import { SystemProvider } from './context/SystemContext.jsx'
 import { PreviewProvider } from './components/PreviewModals.jsx'
 import Dashboard from './pages/Dashboard.jsx'
+import Generate from './pages/Generate.jsx'
 import Workflows from './pages/Workflows.jsx'
 import Wizard from './pages/Wizard.jsx'
 import Models from './pages/Models.jsx'
@@ -21,6 +22,7 @@ export default function App() {
             <AppShell>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/generate" element={<Generate />} />
                 <Route path="/workflows" element={<Workflows />} />
                 <Route path="/workflows/new" element={<Wizard />} />
                 <Route path="/workflows/:id/wizard" element={<Wizard />} />

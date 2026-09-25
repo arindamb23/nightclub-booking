@@ -35,8 +35,8 @@ def start_run(body: RunIn):
 
 
 @router.get("/runs")
-def list_runs(workflow_id: Optional[str] = None):
-    return {"runs": runs.list(workflow_id)}
+def list_runs(workflow_id: Optional[str] = None, template_id: Optional[str] = None):
+    return {"runs": runs.list(workflow_id, template_id)}
 
 
 @router.get("/runs/{run_id}")

@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import json
+import os
 import random
 import re
 import shutil
@@ -14,12 +15,13 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.config import get_settings
+from app.config import get_settings, replace_with_retry
 from app.events import bus
 from app.services import comfy, workflows
 from cb2c_py.lib.workflow_runner import ComfyUIError, WorkflowCancelled
 
 MAX_SEED = 2**50
+MEDIA_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".mp4", ".webm", ".mov", ".mkv", ".avi"}
 
 
 class RunError(ValueError):
@@ -82,7 +84,11 @@ class RunManager:
         return _runs_dir() / f"{_check_run_id(run_id)}.json"
 
     def _save(self, run: Dict[str, Any]) -> None:
-        self._path(run["id"]).write_text(json.dumps(run, indent=2), encoding="utf-8")
+        # atomic: readers (Results page, API polling) never see a half-written file
+        path = self._path(run["id"])
+        tmp = path.with_suffix(f".{threading.get_ident()}.tmp")
+        tmp.write_text(json.dumps(run, indent=2), encoding="utf-8")
+        replace_with_retry(tmp, path)
 
     def get(self, run_id: str) -> Dict[str, Any]:
         p = self._path(run_id)
@@ -90,7 +96,7 @@ class RunManager:
             raise RunError(f"Run '{run_id}' not found.")
         return json.loads(p.read_text(encoding="utf-8"))
 
-    def list(self, workflow_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def list(self, workflow_id: Optional[str] = None, template_id: Optional[str] = None) -> List[Dict[str, Any]]:
         runs = []
         for p in _runs_dir().glob("*.json"):
             try:
@@ -98,6 +104,8 @@ class RunManager:
             except ValueError:
                 continue
             if workflow_id and r.get("workflow_id") != workflow_id:
+                continue
+            if template_id and r.get("template_id") != template_id:
                 continue
             runs.append(r)
         runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
@@ -131,6 +139,32 @@ class RunManager:
     def start(self, workflow_id: str, overrides: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         meta = workflows.get(workflow_id)
         rows = workflows.detect_models(workflow_id)
+        return self._launch(
+            {"workflow_id": workflow_id, "workflow_name": meta["name"], "overrides": overrides},
+            rows, meta["node_count"],
+        )
+
+    def start_template(self, template_id: str, values: Dict[str, Any]) -> Dict[str, Any]:
+        """Runs a Python template (text/image to image/video) with the form values."""
+        from app.services import templates
+
+        t = templates.get(template_id)
+        templates.build(template_id, values)  # validates the inputs before anything is queued
+        rows = templates.detect_models(template_id, values)
+        return self._launch(
+            {"workflow_id": None, "template_id": template_id, "template_values": values,
+             "workflow_name": t["name"], "task": t["task"], "overrides": {}},
+            rows, 0,
+        )
+
+    def _detect(self, run: Dict[str, Any]) -> List[Dict[str, Any]]:
+        if run.get("template_id"):
+            from app.services import templates
+
+            return templates.detect_models(run["template_id"], run.get("template_values") or {}, register=False)
+        return workflows.detect_models(run["workflow_id"], register=False)
+
+    def _launch(self, source: Dict[str, Any], rows: List[Dict[str, Any]], node_count: int) -> Dict[str, Any]:
         need_input = [_model_brief(r) for r in rows if r["status"] in ("no_url", "error")]
         if need_input:
             raise ModelsMissing(need_input)
@@ -145,14 +179,12 @@ class RunManager:
         run_id = dt.datetime.now().strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
         run = {
             "id": run_id,
-            "workflow_id": workflow_id,
-            "workflow_name": meta["name"],
+            **source,
             "status": "preparing" if pending else "queued",
             "created_at": dt.datetime.now().isoformat(timespec="seconds"),
             "finished_at": None,
             "duration": None,
-            "overrides": overrides,
-            "progress": {"node": None, "class_type": None, "value": 0, "max": 0, "done": 0, "total": meta["node_count"],
+            "progress": {"node": None, "class_type": None, "value": 0, "max": 0, "done": 0, "total": node_count,
                          "models": None},
             "outputs": [],
             "error": None,
@@ -174,7 +206,7 @@ class RunManager:
         while True:
             if cancel.is_set():
                 raise WorkflowCancelled("Run cancelled")
-            rows = workflows.detect_models(run["workflow_id"], register=False)
+            rows = self._detect(run)
             failed = [_model_brief(r) for r in rows if r["status"] in ("error", "no_url")]
             if failed:
                 raise ModelsMissing(failed)
@@ -223,6 +255,19 @@ class RunManager:
                     value = random.randint(0, MAX_SEED)
                 node.set_input(input_name, value)
 
+    @staticmethod
+    def _upload_local_media(wf, runner) -> None:
+        """Any input that is a path to an image/video on this PC is uploaded to ComfyUI's input folder."""
+        for node in wf.get_nodes():
+            for name, value in list(node.input_values.items()):
+                if (
+                    isinstance(value, str)
+                    and os.path.isabs(value)
+                    and Path(value).suffix.lower() in MEDIA_EXTS
+                    and os.path.isfile(value)
+                ):
+                    node.input_values[name] = runner.upload_file(value)
+
     def _execute(self, run: Dict[str, Any], cancel: threading.Event) -> None:
         started = time.time()
         runner = comfy.runner()
@@ -253,9 +298,15 @@ class RunManager:
                 self._prepare_models(run, cancel)
                 run["status"] = "queued"
                 self._publish(run)
-            wf = workflows.build(run["workflow_id"])
+            if run.get("template_id"):
+                from app.services import templates
+
+                wf = templates.build(run["template_id"], run.get("template_values") or {})
+            else:
+                wf = workflows.build(run["workflow_id"])
             run["progress"]["total"] = len(wf.nodes)
             self._apply_overrides(wf, run["overrides"], runner)
+            self._upload_local_media(wf, runner)
             run["status"] = "running"
             self._save(run)
             self._publish(run)
@@ -284,7 +335,7 @@ class RunManager:
             run["status"] = "failed"
             run["error"] = e.args[0] if e.args else str(e)
             run["error_details"] = e.details
-        except (workflows.WorkflowError, RunError) as e:
+        except (workflows.WorkflowError, RunError, ValueError) as e:
             run["status"] = "failed"
             run["error"] = str(e)
         except Exception as e:  # noqa: BLE001 - never leave a run hanging
@@ -295,7 +346,8 @@ class RunManager:
             run["duration"] = round(time.time() - started, 1)
             self._save(run)
             self._publish(run)
-            workflows.record_run(run["workflow_id"], run["id"], run["status"])
+            if run.get("workflow_id"):
+                workflows.record_run(run["workflow_id"], run["id"], run["status"])
             with self._lock:
                 self._cancel.pop(run["id"], None)
 

@@ -22,14 +22,22 @@ from cb2c_py.nodes.generated import (
 from cb2c_py.nodes.generated.loadimage import LoadImage
 
 
+TEMPLATE = {
+    "name": "FLUX Kontext Image Edit (Nunchaku)",
+    "task": "image_edit",
+    "description": "Edit one or two images with a text instruction using FLUX.1 Kontext (Nunchaku). "
+    "Model: int4 for most NVIDIA GPUs, fp4 (svdq-fp4_r32-...) for RTX 50xx. Needs the ComfyUI-nunchaku custom node.",
+    "labels": {"image_path1": "Input image", "model": "Kontext model"},
+}
+
 def flux_kontext_dev_nunchaku(
-    model: str,
     positive_prompt: str,
-    seed: int,
-    steps: int,
-    cfg: float,
-    output_prefix: str,
     image_path1: str,
+    seed: int = 0,
+    model: str = "svdq-int4_r32-flux.1-kontext-dev.safetensors",
+    steps: int = 20,
+    cfg: float = 1.0,
+    output_prefix: str = "flux_kontext_",
     image_path2: str | None = None,
 ):
     wf = Workflow()

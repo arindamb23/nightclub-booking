@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.config import get_settings, PROJECT_ROOT
+from app.config import get_settings, PROJECT_ROOT, replace_with_retry
 
 DEFAULTS_PATH = Path(__file__).resolve().parents[1] / "defaults" / "models.json"
 
@@ -98,7 +98,7 @@ class ModelRegistry:
         path = self.path
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps({"version": 2, "models": self._models}, indent=2), encoding="utf-8")
-        os.replace(tmp, path)
+        replace_with_retry(tmp, path)
 
     def _ensure(self) -> None:
         if self._loaded_from != self.path:

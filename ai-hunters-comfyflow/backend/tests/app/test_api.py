@@ -7,7 +7,7 @@ SAMPLES = Path(__file__).resolve().parents[3] / "samples"
 
 
 def test_health_and_system(client):
-    assert client.get("/api/health").json()["version"] == "1.0.2"
+    assert client.get("/api/health").json()["version"] == "1.0.3"
     s = client.get("/api/system").json()
     assert s["backend_port"] == 3015 and s["frontend_port"] == 5091
     assert s["comfyui"]["reachable"] is True

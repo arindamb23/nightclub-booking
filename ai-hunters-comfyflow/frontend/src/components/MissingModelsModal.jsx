@@ -7,7 +7,7 @@ import { api } from '../api.js'
 // Shown when a run needs models that cannot be downloaded (no URL, wrong URL or wrong path).
 // The user types a download URL or the path of the file on this PC; the model table is updated
 // and the run is started again, which downloads (or links) the models automatically.
-export default function MissingModelsModal({ workflowId, models, reason, onClose, onSaved }) {
+export default function MissingModelsModal({ resolvePath, extraBody = {}, models, reason, onClose, onSaved }) {
   const [rows, setRows] = useState(() => models.map((m) => ({ ...m, value: m.url || '' })))
   const [categories, setCategories] = useState([])
   const [busy, setBusy] = useState(false)
@@ -25,7 +25,8 @@ export default function MissingModelsModal({ workflowId, models, reason, onClose
     setBusy(true)
     setError('')
     try {
-      await api.post(`/api/workflows/${workflowId}/models/resolve`, {
+      await api.post(resolvePath, {
+        ...extraBody,
         items: rows.map((r) => ({ name: r.name, value: r.value.trim(), category: r.category })),
       })
       onSaved()

@@ -17,6 +17,12 @@ from cb2c_py.nodes.generated.saveanimatedwebp import SaveAnimatedWEBP
 from cb2c_py.nodes.generated.vhs_videocombine import VHS_VideoCombine
 from cb2c_py.nodes.generated.wanimagetovideo import WanImageToVideo
 
+TEMPLATE = {
+    "name": "Wan 2.1 Image to Video (GGUF)",
+    "task": "image_to_video",
+    "description": "Animate a start image with a text prompt (16 fps) using Wan 2.1 14B 480p GGUF. Needs ComfyUI-GGUF.",
+}
+
 FPS = 16
 
 

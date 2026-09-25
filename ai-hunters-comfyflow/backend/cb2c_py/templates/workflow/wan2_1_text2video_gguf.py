@@ -12,6 +12,12 @@ from cb2c_py.nodes.generated import (
 from cb2c_py.nodes.generated.saveanimatedwebp import SaveAnimatedWEBP
 from cb2c_py.nodes.generated.vhs_videocombine import VHS_VideoCombine
 
+TEMPLATE = {
+    "name": "Wan 2.1 Text to Video (GGUF)",
+    "task": "text_to_video",
+    "description": "Generate a short video (16 fps) from a text prompt with Wan 2.1 14B GGUF. Needs ComfyUI-GGUF.",
+}
+
 FPS = 16
 
 

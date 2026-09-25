@@ -32,9 +32,22 @@ export default function Dashboard() {
     <div className="stack" style={{ gap: 20 }}>
       <div className="card hero">
         <h1>{greeting()}.</h1>
-        <p>Import a ComfyUI workflow, let ComfyFlow fetch its models into the right folders, then run it and preview every image and video right here.</p>
-        <div className="row row-wrap">
-          <button className="btn btn-primary btn-lg" onClick={() => navigate('/workflows/new')}><Icon name="plus" />New workflow</button>
+        <p>Generate images and videos from a prompt or a picture, or import any ComfyUI workflow. ComfyFlow fetches the models into the right folders and previews every result right here.</p>
+        <div className="quick-tasks">
+          {[
+            ['text_to_image', 'image', 'Text to Image'],
+            ['text_to_video', 'film', 'Text to Video'],
+            ['image_to_video', 'film', 'Image to Video'],
+            ['image_edit', 'edit', 'Image Edit'],
+          ].map(([id, icon, label]) => (
+            <button key={id} className="quick-task" onClick={() => navigate(`/generate?task=${id}`)}>
+              <span className="task-tab-icon"><Icon name={icon} size={18} /></span>{label}
+            </button>
+          ))}
+        </div>
+        <div className="row row-wrap mt-16">
+          <button className="btn btn-primary btn-lg" onClick={() => navigate('/generate')}><Icon name="sparkle" />Generate</button>
+          <button className="btn btn-lg" onClick={() => navigate('/workflows/new')}><Icon name="plus" />New workflow</button>
           <button className="btn btn-lg" onClick={() => navigate('/models')}><Icon name="box" />Manage models</button>
         </div>
       </div>

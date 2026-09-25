@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.2
+# AI Hunters ComfyFlow v1.0.3
 """FastAPI application for AI Hunters ComfyFlow."""
 import asyncio
 from contextlib import asynccontextmanager
@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from app import APP_NAME, APP_VERSION
 from app.config import get_settings
 from app.events import bus
-from app.routers import system, models, workflows, runs
+from app.routers import system, models, workflows, runs, templates
 from app.services.registry import registry
 from app.services import workflows as workflows_service
 
@@ -49,5 +49,5 @@ def health():
     return {"status": "ok", "app": APP_NAME, "version": APP_VERSION}
 
 
-for r in (system.router, models.router, workflows.router, workflows.samples_router, runs.router):
+for r in (system.router, models.router, workflows.router, workflows.samples_router, templates.router, runs.router):
     app.include_router(r)

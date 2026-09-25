@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.2
+# AI Hunters ComfyFlow v1.0.3
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -45,6 +45,28 @@ Then, in the project folder:
 Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_PORT` in `.env` before running Setup.bat.
 
 ## Using the app
+
+* **Generate** (sidebar) – one screen for the four common jobs, each powered by a Python *template*:
+
+  | Task | Built-in template (`backend\cb2c_py\templates\workflow\`) | Inputs |
+  |---|---|---|
+  | Text to Image | `text2image.py` (SD 1.5 / SDXL checkpoints) | prompt, negative prompt, seed, size, checkpoint, sampler |
+  | Text to Video | `wan2_1_text2video_gguf.py` (Wan 2.1 14B GGUF) | prompt, negative prompt, seed, duration, size |
+  | Image to Video | `wan2_1_image2video_gguf.py` (Wan 2.1 14B 480p GGUF) | **input image + prompt**, negative prompt, seed, duration |
+  | Image Edit | `omnigen2_image2image.py`, `flux_kontext_dev_nunchaku.py` | input image (+ optional 2nd image), instruction prompt |
+
+  Upload a picture (or use a sample), write the prompt and press **Generate**. The models the template needs
+  are **detected automatically** for the values you chose, downloaded if missing (the same “Models needed”
+  dialog asks for a URL or file path when there is no working link), then the result opens in the
+  image or video preview.
+* **Your own templates** – *Generate → Add template (.py)*. A template is any Python function that returns a
+  cb2c_py `Workflow`; its parameters become the form (names containing `prompt`, `image`/`image_path`, `seed`
+  are recognised; numbers, booleans, `ckpt_name`/`model` get suitable inputs). Optionally add
+  `TEMPLATE = {"name": ..., "task": "text_to_image|text_to_video|image_to_video|image_edit", "description": ...}`.
+  Uploaded templates are stored in `data\templates\`.
+* **Command-line runners** (as in the original project): `backend\cb2c_py\templates\runner\*.py`, e.g.
+  `.venv\Scripts\python -m cb2c_py.templates.runner.wan2_1_image2video_gguf` from the `backend` folder
+  (needs ComfyUI running and the models downloaded; set `DEBUG_JSON_WORKFLOW=true` to only print the JSON).
 
 * **Sample library** – five ready-made workflows are added to the Workflows list on first start
   (they live in `samples\workflows\`):
@@ -112,9 +134,12 @@ ai-hunters-comfyflow/
 │  │  ├─ routers/                   system · models · workflows · runs
 │  │  ├─ services/                  registry · downloader · comfy · workflows · runs
 │  │  └─ defaults/models.json       initial model list
-│  ├─ cb2c_py/                      workflow library (typed nodes, Workflow, runner, converter)
+│  ├─ cb2c_py/                      workflow library (935 typed node classes, Workflow, runner, converter)
+│  │  └─ templates/workflow/        Python templates used by Generate (6)
+│  │  └─ templates/runner/          command-line runners for the templates (5) + input images
+│  ├─ json-workflows/               input folder for the command-line JSON converter
 │  ├─ tools/fake_comfyui.py         ComfyUI stand-in for tests and GPU-less demos
-│  └─ tests/                        pytest suite (48 tests)
+│  └─ tests/                        pytest suite (52 tests)
 └─ frontend/                        React 18 + Vite, light theme, modal system
    └─ src/ pages · components · context · styles/theme-light.css
 ```
@@ -127,6 +152,8 @@ ai-hunters-comfyflow/
 `GET /api/workflows` · `POST /api/workflows/upload|import-path` · `GET|PATCH|DELETE /api/workflows/{id}` ·
 `GET /api/workflows/{id}/script|models|parameters` · `POST /api/workflows/{id}/models/download-missing|resolve` ·
 `GET /api/samples` · `POST /api/samples/open` ·
+`GET /api/templates` · `POST /api/templates/upload` · `DELETE /api/templates/{id}` ·
+`POST /api/templates/{id}/models|models/resolve|models/download-missing|generate` · `GET /api/templates/sample-images[/{name}]` ·
 `POST|GET /api/runs` · `GET|DELETE /api/runs/{id}` · `POST /api/runs/{id}/cancel` ·
 `GET /api/runs/{id}/files/{filename}[?download=1]` · `GET /api/runs/{id}/zip` · `POST|GET /api/uploads`
 
@@ -134,7 +161,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 48 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 52 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 

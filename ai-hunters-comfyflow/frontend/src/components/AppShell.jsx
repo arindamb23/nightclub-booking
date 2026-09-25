@@ -8,6 +8,7 @@ const TITLES = [
   ['/workflows/', 'Workflow wizard'],
   ['/workflows', 'Workflows'],
   ['/models', 'Model manager'],
+  ['/generate', 'Generate'],
   ['/results', 'Results'],
   ['/settings', 'Settings'],
   ['/', 'Dashboard'],
@@ -41,6 +42,7 @@ export default function AppShell({ children }) {
           <NavLink to="/workflows/new" className="nav-cta"><Icon name="plus" />New workflow</NavLink>
           <div className="nav-label">Workspace</div>
           <NavLink to="/" end><Icon name="home" />Dashboard</NavLink>
+          <NavLink to="/generate"><Icon name="sparkle" />Generate</NavLink>
           <NavLink to="/workflows" end><Icon name="workflow" />Workflows</NavLink>
           <NavLink to="/models"><Icon name="box" />Models</NavLink>
           <NavLink to="/results"><Icon name="image" />Results</NavLink>

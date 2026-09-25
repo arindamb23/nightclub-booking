@@ -250,6 +250,9 @@ class WorkflowRunner:
         cancel_event: Optional[threading.Event] = None,
     ) -> List[Dict[str, Any]]:
         """Runs the workflow, saves outputs into ``output_dir`` and returns their metadata."""
+        if DEBUG_JSON_WORKFLOW:  # dry run: print the API JSON, contact nothing
+            print(json.dumps({"prompt": workflow.to_prompt()}, indent=2))
+            return []
         for node in workflow.get_nodes():
             props = node.__dict__.get("_properties", {})
             if props.get("upload") is True:
@@ -258,9 +261,6 @@ class WorkflowRunner:
                     node.input_values["image"] = self.upload_file(value)
 
         prompt = workflow.to_prompt()
-        if DEBUG_JSON_WORKFLOW:
-            print(json.dumps({"prompt": prompt}, indent=2))
-            return []
 
         client_id = str(uuid.uuid4())
         ws = websocket.WebSocket()

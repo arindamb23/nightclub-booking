@@ -295,3 +295,29 @@ table.grid { width: 100%; border-collapse: separate; border-spacing: 0; }
 .sample-card { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; background: var(--surface-2); display: flex; flex-direction: column; }
 .sample-card h3 { font-size: 16px; }
 .sample-card p { margin: 6px 0 0; flex: 1; }
+
+/* generate */
+.task-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.task-tab {
+  display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: var(--radius-lg); border: 1px solid var(--border);
+  background: var(--surface); font: inherit; color: var(--text-2); cursor: pointer; text-align: left; transition: border-color .15s, box-shadow .15s, background .15s;
+}
+.task-tab:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.task-tab.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--accent-soft-2); color: var(--text); }
+.task-tab-icon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+.task-tab-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.task-tab-text span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.generate-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.image-drop { display: flex; gap: 14px; align-items: center; padding: 12px; border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); background: var(--surface-2); }
+.image-drop img, .image-drop-empty { width: 96px; height: 96px; border-radius: 10px; object-fit: cover; border: 1px solid var(--border); flex: none; background: var(--surface); }
+.image-drop-empty { display: grid; place-items: center; color: var(--muted); }
+.btn.selected { background: var(--accent-soft); color: var(--accent-hover); }
+details.advanced { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; background: var(--surface-2); }
+details.advanced summary { cursor: pointer; font-weight: 600; color: var(--text-2); }
+.model-line { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.model-line .status-cell { min-width: 120px; align-items: flex-end; }
+.quick-tasks { display: flex; flex-wrap: wrap; gap: 10px; }
+.quick-task { display: inline-flex; align-items: center; gap: 10px; padding: 8px 14px 8px 8px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); font: inherit; font-weight: 600; color: var(--text); cursor: pointer; }
+.quick-task:hover { border-color: var(--accent); background: var(--accent-soft-2); }
+@media (max-width: 1100px) { .task-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } .generate-grid { grid-template-columns: 1fr; } }
+.cell-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }

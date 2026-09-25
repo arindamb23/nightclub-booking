@@ -8,6 +8,7 @@ import { useEvent } from '../../context/EventsContext.jsx'
 import { useSystem } from '../../context/SystemContext.jsx'
 import { formatDate, formatDuration } from '../../utils/format.js'
 import MissingModelsModal from '../../components/MissingModelsModal.jsx'
+import RunProgress from '../../components/RunProgress.jsx'
 
 const keyOf = (p) => `${p.node_id}::${p.input}`
 const MAX_SEED = 2 ** 50
@@ -212,9 +213,6 @@ export default function StepRun({ workflow, onBack, onChanged }) {
     try { await api.post(`/api/runs/${run.id}/cancel`) } catch (e) { msg.showError(e) }
   }
 
-  const prog = run?.progress
-  const nodePct = prog?.max ? (prog.value / prog.max) * 100 : null
-  const overall = prog?.total ? (prog.done / prog.total) * 100 : 0
 
   return (
     <div className="stack">
@@ -261,49 +259,13 @@ export default function StepRun({ workflow, onBack, onChanged }) {
 
       {run && (
         <div className="card card-pad" ref={runCardRef} style={{ scrollMarginTop: 76 }}>
-          <div className="row between">
-            <h3>Current run</h3>
-            <RunStatus status={run.status} />
-          </div>
-          {run.status === 'preparing' && prog?.models && (
-            <div className="run-progress mt-16">
-              <div className="row between small">
-                <span><b>Downloading models</b> before the run starts</span>
-                <span className="muted">{prog.models.ready} / {prog.models.total} ready</span>
-              </div>
-              <div className="mt-8"><Progress percent={(prog.models.ready / Math.max(1, prog.models.total)) * 100} large /></div>
-              <div className="stack mt-16" style={{ gap: 8 }}>
-                {prog.models.items.filter((m) => m.status !== 'ready').map((m) => (
-                  <div key={m.name}>
-                    <div className="row between small"><span className="mono truncate">{m.name}</span><span className="muted">{m.percent != null ? `${Math.round(m.percent)}%` : m.status}</span></div>
-                    <div className="mt-8"><Progress percent={m.percent} indeterminate={m.percent == null} /></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="run-progress mt-16">
-            <div className="row between small">
-              <span>{prog?.class_type ? <>Executing <b>{prog.class_type}</b> (node {prog.node})</> : run.status === 'preparing' ? 'Starts when the models are ready' : active ? 'Waiting for ComfyUI…' : 'Finished'}</span>
-              <span className="muted">{prog?.done || 0} / {prog?.total || 0} nodes</span>
-            </div>
-            <div className="mt-8"><Progress percent={overall} large indeterminate={run.status !== 'preparing' && active && !overall} /></div>
-            {nodePct != null && active && (
-              <div className="mt-8 small muted row between"><span>Steps</span><span>{prog.value} / {prog.max}</span></div>
-            )}
-            {nodePct != null && active && <div className="mt-8"><Progress percent={nodePct} /></div>}
-          </div>
-          {run.status === 'succeeded' && outputsToItems(run).length > 0 && (
-            <div className="thumbs mt-16">
-              {outputsToItems(run).map((item, i, all) => <Thumb key={item.filename} item={item} onClick={() => openPreview(all, i)} />)}
-            </div>
-          )}
+          <RunProgress run={run} />
         </div>
       )}
 
       {missing && (
         <MissingModelsModal
-          workflowId={workflow.id}
+          resolvePath={`/api/workflows/${workflow.id}/models/resolve`}
           models={missing.models}
           reason={missing.reason}
           onClose={() => setMissing(null)}

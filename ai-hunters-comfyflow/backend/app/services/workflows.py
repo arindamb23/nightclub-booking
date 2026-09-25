@@ -5,6 +5,7 @@ import datetime as dt
 import importlib.util
 import inspect
 import json
+import os
 import re
 import shutil
 import sys
@@ -13,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.config import get_settings, PROJECT_ROOT
+from app.config import get_settings, PROJECT_ROOT, replace_with_retry
 from app.services import comfy
 from app.services.registry import registry, CATEGORIES, RegistryError, is_local_source, local_source_path
 from app.services.downloader import downloader
@@ -108,7 +109,7 @@ def _new_id(display: str) -> str:
 
 
 def _finish_import(wid: str, meta: Dict[str, Any], model_hints: List[Dict[str, str]]) -> Dict[str, Any]:
-    _meta_path(wid).write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    _atomic_write(_meta_path(wid), json.dumps(meta, indent=2))
     # register models that the workflow itself documents (name + url + directory)
     for hint in model_hints:
         cat = hint.get("directory") or "checkpoints"
@@ -270,9 +271,15 @@ def _read_meta(wid: str) -> Dict[str, Any]:
     return json.loads(_meta_path(wid).read_text(encoding="utf-8"))
 
 
+def _atomic_write(path: Path, text: str) -> None:
+    tmp = path.with_suffix(f".{threading.get_ident()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    replace_with_retry(tmp, path)
+
+
 def _write_meta(wid: str, meta: Dict[str, Any]) -> None:
     meta["updated_at"] = _now()
-    _meta_path(wid).write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    _atomic_write(_meta_path(wid), json.dumps(meta, indent=2))
 
 
 def get(wid: str) -> Dict[str, Any]:
@@ -406,7 +413,14 @@ def detect_models(wid: str, register: bool = True) -> List[Dict[str, Any]]:
     """Finds model files referenced by the workflow and joins them with the registry."""
     meta = _read_meta(wid)
     hints = {h["name"]: h.get("directory", "") for h in meta.get("model_hints") or []}
-    prompt = _prompt(wid)
+    return detect_models_in_prompt(_prompt(wid), hints, register)
+
+
+def detect_models_in_prompt(
+    prompt: Dict[str, Any], hints: Optional[Dict[str, str]] = None, register: bool = True
+) -> List[Dict[str, Any]]:
+    """Model files referenced by an API-format graph (workflow or template), with download status."""
+    hints = hints or {}
     found: Dict[str, Dict[str, Any]] = {}
     for node_id, node in prompt.items():
         ctype = node.get("class_type", "")
@@ -477,7 +491,13 @@ def resolve_models(wid: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]
     ``items``: ``[{name, value, category?}]`` where value is a download URL or the
     full path of the model file (or of the folder that contains it).
     """
-    rows = {r["name"]: r for r in detect_models(wid)}
+    resolve_rows(detect_models(wid), items)
+    return detect_models(wid)
+
+
+def resolve_rows(detected: List[Dict[str, Any]], items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Validates and saves URLs / local paths for detected model rows (workflows and templates)."""
+    rows = {r["name"]: r for r in detected}
     errors: List[str] = []
     updates = []
     for it in items:
@@ -512,7 +532,7 @@ def resolve_models(wid: str, items: List[Dict[str, Any]]) -> List[Dict[str, Any]
         except RegistryError as e:
             raise WorkflowError(str(e)) from e
         downloader.clear(original, *[n for n, r in rows.items() if r["registry_name"] == original])
-    return detect_models(wid)
+    return []
 
 
 # ----------------------------------------------------------------- params
