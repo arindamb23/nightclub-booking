@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.8
+# AI Hunters ComfyFlow v1.0.9
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -248,6 +248,9 @@ cd backend
   add it to its command line. Node states and timings work without it.
 * **A download fails with 401/403** – the model is gated: add a Hugging Face token in Settings (and accept the
   licence on the model page) or a Civitai key.
+* **Live node view / editor went blank during a long step** – fixed in v1.0.9 (cards were re-created without their
+  measured size, so they stayed hidden while a node such as *CLIP Text Encode* loaded a big text encoder silently).
+  A long silent step shows which node it is and whether ComfyUI's memory use is changing (a model is loading).
 * **“Node 'workflow/NAME' not found”** – that is a ComfyUI *group node*, not a missing package; since v1.0.8 it is
   expanded automatically (open the workflow again or just run it).
 * **A custom node install fails** – open *Show install log* in the dialog. Common causes: no internet / GitHub blocked,

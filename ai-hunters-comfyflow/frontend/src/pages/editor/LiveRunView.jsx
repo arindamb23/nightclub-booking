@@ -80,6 +80,23 @@ const LiveNode = memo(({ data }) => {
 
 const nodeTypes = { live: LiveNode }
 
+const validPos = (p) => (p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null)
+
+// Fit / center only with finite numbers: one NaN position blanks the whole canvas and the minimap
+export function safeFit(flow) {
+  const ok = flow.getNodes().filter((n) => validPos(n.position))
+  if (ok.length) flow.fitView({ nodes: ok.map((n) => ({ id: n.id })), padding: 0.15, minZoom: 0.3, maxZoom: 1, duration: 300 })
+}
+function centerOn(flow, nid, zoom) {
+  const n = flow.getNode(nid)
+  const p = validPos(n?.position)
+  if (!p) return
+  const w = n.measured?.width || NODE_W
+  const h = n.measured?.height || 160
+  const z = zoom || Math.max(Math.min(flow.getZoom() || 1, 1.2), 0.85)
+  if (Number.isFinite(z)) flow.setCenter(p.x + w / 2, p.y + h / 2, { zoom: z, duration: 450 })
+}
+
 function useNow(active) {
   const [now, setNow] = useState(Date.now() / 1000)
   useEffect(() => {
@@ -114,20 +131,23 @@ function Canvas({ run, graph, follow }) {
   }, [run])
 
   const positions = useMemo(() => {
-    const all = graph.nodes.every((n) => n.position)
+    const all = graph.nodes.every((n) => validPos(n.position))
     if (all) return Object.fromEntries(graph.nodes.map((n) => [n.id, n.position]))
     return autoLayout(graph.nodes.map((n) => ({ id: n.id, data: { node: n } })), graph.edges)
   }, [graph])
 
   useEffect(() => {
     setNodes((cur) => {
-      const old = Object.fromEntries(cur.map((n) => [n.id, n.position]))
+      // keep React Flow's own fields (measured size, internals): a node without them is hidden until re-measured
+      const byId = Object.fromEntries(cur.map((n) => [n.id, n]))
       return graph.nodes.map((n) => {
         const state = nodeState(run, n.id)
+        const prev = byId[n.id]
         return {
+          ...(prev || {}),
           id: n.id,
           type: 'live',
-          position: old[n.id] || positions[n.id] || { x: 0, y: 0 },
+          position: validPos(prev?.position) || validPos(positions[n.id]) || { x: 0, y: 0 },
           data: {
             node: n, state, entry: prog.nodes?.[n.id], now,
             step: prog.node === n.id ? { value: prog.value, max: prog.max } : null,
@@ -150,21 +170,23 @@ function Canvas({ run, graph, follow }) {
   }), [graph, run, active])
 
   const initialized = useNodesInitialized()
+  const laidOut = useRef(false)
   useEffect(() => {
-    if (!initialized) return
-    if (!graph.nodes.every((n) => n.position)) {
+    if (!initialized || laidOut.current) return
+    laidOut.current = true  // once: later updates keep positions (and the user's panning)
+    if (!graph.nodes.every((n) => validPos(n.position))) {
       const pos = autoLayout(flow.getNodes(), graph.edges)
-      setNodes((cur) => cur.map((n) => ({ ...n, position: pos[n.id] || n.position })))
+      setNodes((cur) => cur.map((n) => ({ ...n, position: validPos(pos[n.id]) || n.position })))
     }
-    setTimeout(() => flow.fitView({ padding: 0.15, minZoom: 0.35, maxZoom: 1, duration: 300 }), 60)
+    setTimeout(() => safeFit(flow), 80)
   }, [initialized]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // keep the running node in view
+  // keep the running node in view (also once the cards are measured and laid out)
   useEffect(() => {
-    if (!follow || !active || !prog.node) return
-    const n = flow.getNode(prog.node)
-    if (n) flow.setCenter(n.position.x + NODE_W / 2, n.position.y + 80, { zoom: Math.max(flow.getZoom(), 0.85), duration: 450 })
-  }, [prog.node, follow, active, flow])
+    if (!follow || !active || !prog.node || !initialized) return
+    const t = setTimeout(() => centerOn(flow, prog.node), 120)
+    return () => clearTimeout(t)
+  }, [prog.node, follow, active, flow, initialized])
 
   return (
     <ReactFlow
@@ -190,13 +212,31 @@ function Canvas({ run, graph, follow }) {
 const STALL_SECS = 45
 
 // What ComfyUI is doing when the nodes do not move: queue, GPU / RAM, silence
-export function RunHealth({ run, onOpenConsole, compact = false }) {
+// Memory in use changing = ComfyUI is loading / moving a model (it sends no messages while it does that)
+function useMemoryTrend(res) {
+  const hist = useRef([])
+  const used = res && res.ram_free != null ? (res.ram_total - res.ram_free) + (res.vram_total && res.vram_free != null ? res.vram_total - res.vram_free : 0) : null
+  useEffect(() => {
+    if (used == null) return
+    const t = Date.now() / 1000
+    hist.current = [...hist.current.filter((h) => t - h.t < 20), { t, used }]
+  }, [used])
+  const h = hist.current
+  if (h.length < 2) return 0
+  return h[h.length - 1].used - h[0].used
+}
+
+export function RunHealth({ run, onOpenConsole, compact = false, nodeTitle }) {
   const active = !DONE.includes(run.status)
   const now = useNow(active)
   const prog = run.progress || {}
   const res = prog.resources
   const [busy, setBusy] = useState(false)
+  const memDelta = useMemoryTrend(res)
   if (!active || run.status === 'preparing') return null
+  const title = nodeTitle || prog.class_type
+  const loading = /load|clip|encode|unet|vae|checkpoint|model/i.test(`${title} ${prog.class_type}`)
+  const moving = Math.abs(memDelta) > 64 * 1024 * 1024
   const quiet = prog.last_event ? now - prog.last_event : null
   const stalled = quiet != null && quiet > STALL_SECS
   const vramUsed = res?.vram_total && res.vram_free != null ? res.vram_total - res.vram_free : null
@@ -229,8 +269,12 @@ export function RunHealth({ run, onOpenConsole, compact = false }) {
       )}
       {stalled && !prog.queue_ahead && (
         <div className="callout callout-info small"><Icon name="info" /><div style={{ flex: 1 }}>
-          No update from ComfyUI for {Math.floor(quiet / 60) ? `${Math.floor(quiet / 60)}m ` : ''}{Math.round(quiet % 60)}s.
-          {' '}{prog.node ? 'Big models (video, 14B) can take several minutes to load, longer when RAM is full and Windows uses the page file.' : 'ComfyUI has not started this workflow yet.'}
+          {prog.node ? <><b>{title}</b> has been working for {Math.floor(quiet / 60) ? `${Math.floor(quiet / 60)}m ` : ''}{Math.round(quiet % 60)}s without a progress message. </>
+            : <>No update from ComfyUI for {Math.floor(quiet / 60) ? `${Math.floor(quiet / 60)}m ` : ''}{Math.round(quiet % 60)}s. </>}
+          {!prog.node ? 'ComfyUI has not started this workflow yet.'
+            : moving ? `ComfyUI is busy: memory in use changed by ${formatBytes(Math.abs(memDelta))} in the last seconds (a model is being loaded or moved).`
+              : loading ? 'ComfyUI reports nothing while it loads a model: text encoders (T5-XXL ≈ 9.8 GB, umt5-xxl ≈ 6.7 GB) and diffusion models can take minutes on the first run, longer when RAM is nearly full and Windows uses the page file.'
+                : 'Some nodes send no progress while they work. The ComfyUI console shows what it is doing.'}
           {onOpenConsole && <div className="mt-8"><button className="btn btn-sm" onClick={onOpenConsole}><Icon name="code" size={13} />Show ComfyUI console</button></div>}
         </div></div>
       )}
@@ -327,8 +371,7 @@ function Inner({ run: initial, onClose, onCancel, autoPreview = false, showConso
 
   const focus = useCallback((nid) => {
     setFollow(false)
-    const n = flow.getNode(nid)
-    if (n) flow.setCenter(n.position.x + NODE_W / 2, n.position.y + 80, { zoom: 1, duration: 400 })
+    centerOn(flow, nid, 1)
   }, [flow])
 
   const prog = run.progress || {}
@@ -357,7 +400,7 @@ function Inner({ run: initial, onClose, onCancel, autoPreview = false, showConso
         </div>
         <RunStatus status={run.status} />
         <label className="checkbox small" title="Keep the running node centred"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />Follow</label>
-        <button className="btn" onClick={() => flow.fitView({ padding: 0.15, duration: 300 })}><Icon name="maximize" />Fit</button>
+        <button className="btn" onClick={() => safeFit(flow)}><Icon name="maximize" />Fit</button>
         {run.workflow_id && <Link className="btn" to={`/workflows/${run.workflow_id}/editor`} onClick={onClose}><Icon name="sliders" />Open editor</Link>}
         <button className={`btn ${consoleOpen ? 'btn-active' : ''}`} onClick={() => setConsoleOpen((v) => !v)}><Icon name="code" />Console</button>
         {active && onCancel && <button className="btn btn-danger" onClick={onCancel}><Icon name="stop" size={13} />Cancel run</button>}
@@ -373,7 +416,7 @@ function Inner({ run: initial, onClose, onCancel, autoPreview = false, showConso
           </div>
           {consoleOpen && <ComfyConsole active onClose={() => setConsoleOpen(false)} />}
         </div>
-        {graph && <Timeline run={run} graph={graph} onFocus={focus} health={<RunHealth run={run} onOpenConsole={() => setConsoleOpen(true)} />} />}
+        {graph && <Timeline run={run} graph={graph} onFocus={focus} health={<RunHealth run={run} nodeTitle={current?.title} onOpenConsole={() => setConsoleOpen(true)} />} />}
       </div>
     </div>
   )

@@ -45,6 +45,7 @@ function EditorCanvas() {
   const [saving, setSaving] = useState(false)
   const [query, setQuery] = useState('')
   const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const lastLayout = useRef({ key: '', positions: null })
 
   const load = useCallback(async () => {
     try {
@@ -124,11 +125,20 @@ function EditorCanvas() {
     if (!graph) return
     const allSaved = visible.nodes.every((n) => positions[n.id])
     const pos = allSaved ? positions : autoLayout(visible.nodes, visible.edges)
+    const layoutKey = `${view}|${visible.nodes.map((n) => n.id).join(',')}`
+    const relaid = layoutKey !== lastLayout.current.key || positions !== lastLayout.current.positions
+    lastLayout.current = { key: layoutKey, positions }
     setNodes((current) => {
-      const sel = new Set(current.filter((n) => n.selected).map((n) => n.id))
-      return visible.nodes.map((n) => ({ ...n, position: pos[n.id] || { x: 0, y: 0 }, selected: sel.has(n.id) }))
+      const byId = Object.fromEntries(current.map((n) => [n.id, n]))
+      // keep React Flow's measured size (else the card is hidden until re-measured) and, when only the data
+      // changed (edits, live run states), the position it has now
+      return visible.nodes.map((n) => {
+        const prev = byId[n.id]
+        const position = (!relaid && prev?.position) || pos[n.id] || prev?.position || { x: 0, y: 0 }
+        return { ...(prev || {}), ...n, position, selected: !!prev?.selected }
+      })
     })
-  }, [visible, positions, graph, setNodes])
+  }, [visible, positions, graph, setNodes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fit the whole graph; when it is too wide to stay readable (zoom < 0.6), start at the inputs (left edge)
   const canvasRef = useRef(null)

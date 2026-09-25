@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/ (cb2c_p
 (state["dir"] / "input").mkdir()
 STEP_DELAY = 0.05
 FULL_OBJECT_INFO = False
+SLOW_NODES: Dict[str, float] = {}
 HIDDEN_PACKS: Dict[str, str] = {}  # node type -> package folder that 'provides' it
 HISTORY_DELAY = 0.6
 
@@ -179,6 +180,8 @@ async def _execute_inner(prompt_id: str, prompt: Dict[str, Any], cid: str):
         if ctype == "CrashNode":
             await _send(cid, {"type": "execution_error", "data": {"prompt_id": prompt_id, "node_id": node_id, "node_type": ctype, "exception_type": "RuntimeError", "exception_message": "simulated crash"}})
             return
+        if ctype in SLOW_NODES:  # silent, like a big model loading
+            await asyncio.sleep(SLOW_NODES[ctype])
         steps = int(node["inputs"].get("steps", 0) or 0) if "Sampler" in ctype else 0
         for i in range(1, steps + 1):
             if state["interrupt"]:
@@ -248,7 +251,11 @@ if __name__ == "__main__":
     ap.add_argument("--full-object-info", action="store_true", help="serve /object_info built from the node wrappers")
     ap.add_argument("--hide", default="", help="NodeType=PackFolder,... pretend these custom nodes are not installed")
     ap.add_argument("--custom-nodes", default="", help="folder whose sub-folders count as installed packages")
+    ap.add_argument("--slow", default="", help="NodeType=seconds,... stay silent that long on these nodes")
     a = ap.parse_args()
+    for pair in filter(None, a.slow.split(",")):
+        ct, _, secs = pair.partition("=")
+        SLOW_NODES[ct] = float(secs or 30)
     STEP_DELAY = a.step_delay
     FULL_OBJECT_INFO = a.full_object_info
     for pair in filter(None, a.hide.split(",")):
