@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.5
+# AI Hunters ComfyFlow v1.0.6
 """FastAPI application for AI Hunters ComfyFlow."""
 import asyncio
 from contextlib import asynccontextmanager
@@ -15,6 +15,23 @@ from app.services.registry import registry
 from app.services import workflows as workflows_service
 
 
+def _migrate_parallel_downloads(settings) -> None:
+    """v1.0.6: models download one at a time by default. Moves the old default (2) to 1 once."""
+    marker = settings.data_dir / ".downloads_one_by_one"
+    if marker.exists():
+        return
+    try:
+        from app.config import ENV_PATH, update_env, reload_settings
+
+        text = ENV_PATH.read_text(encoding="utf-8") if ENV_PATH.exists() else ""
+        if any(line.strip().replace(" ", "") == "MAX_PARALLEL_DOWNLOADS=2" for line in text.splitlines()):
+            update_env({"MAX_PARALLEL_DOWNLOADS": "1"})
+            reload_settings()
+        marker.write_text("1", encoding="utf-8")
+    except Exception as e:  # noqa: BLE001 - never block start-up
+        print(f"Download setting not migrated: {e}")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     bus.bind(asyncio.get_running_loop())
@@ -22,6 +39,7 @@ async def lifespan(_: FastAPI):
     for sub in ("workflows", "runs", "outputs", "uploads"):
         (settings.data_dir / sub).mkdir(parents=True, exist_ok=True)
     registry.load()
+    _migrate_parallel_downloads(settings)
     try:
         workflows_service.seed_samples()
     except Exception as e:  # noqa: BLE001 - samples are optional

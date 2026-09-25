@@ -7,7 +7,7 @@ SAMPLES = Path(__file__).resolve().parents[3] / "samples"
 
 
 def test_health_and_system(client):
-    assert client.get("/api/health").json()["version"] == "1.0.5"
+    assert client.get("/api/health").json()["version"] == "1.0.6"
     s = client.get("/api/system").json()
     assert s["backend_port"] == 3015 and s["frontend_port"] == 5091
     assert s["comfyui"]["reachable"] is True
@@ -134,6 +134,19 @@ def test_workflow_wizard_flow(client, files_dir, files_url):
     assert client.get(f"/api/runs/{run['id']}/files/..%2F..%2F.env").status_code == 404
     assert client.get(f"/api/workflows/{wid}").json()["last_run_status"] == "succeeded"
     assert any(r["id"] == run["id"] for r in client.get(f"/api/runs?workflow_id={wid}").json()["runs"])
+
+    # live node view: every node has a state and timings, the graph matches the workflow
+    states = done["progress"]["nodes"]
+    assert set(states) == {"3", "4", "5", "6", "7", "8", "9"}
+    assert all(e["state"] == "done" and e["ended"] >= e["started"] for e in states.values())
+    assert sorted(e["order"] for e in states.values()) == list(range(1, 8))
+    assert done["progress"]["phase"] == ""
+    g = client.get(f"/api/runs/{run['id']}/graph").json()
+    assert {n["id"] for n in g["nodes"]} == set(states) and len(g["edges"]) >= 6
+    # the sampler sent live preview frames (binary WebSocket messages)
+    p = client.get(f"/api/runs/{run['id']}/preview")
+    assert p.status_code == 200 and p.headers["content-type"] == "image/png" and p.content[:4] == b"\x89PNG"
+    assert client.get("/api/runs/nope_1/graph").status_code == 404
 
 
 def test_failed_download_asks_again_and_local_path_works(client, files_url, tmp_path):

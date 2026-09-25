@@ -153,7 +153,8 @@ def start() -> Dict[str, Any]:
         return {"started": False, "message": "ComfyUI is starting..."}
     python = s.comfyui_python if s.comfyui_python.exists() else Path("python")
     write_extra_model_paths()
-    args = [str(python), str(s.comfyui_dir / "main.py"), "--listen", s.comfyui_host, "--port", str(s.comfyui_port)]
+    args = [str(python), str(s.comfyui_dir / "main.py"), "--listen", s.comfyui_host, "--port", str(s.comfyui_port),
+            "--preview-method", "auto"]  # live sampling previews for the node view (extra args can override)
     if s.comfyui_extra_args:
         args += shlex.split(s.comfyui_extra_args, posix=os.name != "nt")
     kwargs: Dict[str, Any] = {"cwd": str(s.comfyui_dir)}

@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, JSONResponse
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_IMAGE = ROOT / "samples" / "images" / "beach.png"
 SAMPLE_VIDEO = ROOT / "samples" / "videos" / "sample.webm"
+PREVIEW_PNG = ROOT / "samples" / "images" / "girl.png"
 VIDEO_NODES = ("SaveAnimatedWEBP", "SaveVideo", "VHS_VideoCombine", "SaveWEBM", "SaveAnimatedPNG")
 
 app = FastAPI(title="Fake ComfyUI")
@@ -90,6 +91,21 @@ async def _send(cid, msg):
             pass
 
 
+async def _send_bytes(cid, data: bytes):
+    ws = state["clients"].get(cid)
+    if ws is not None:
+        try:
+            await ws.send_bytes(data)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _preview_frame() -> bytes:
+    """A binary PREVIEW_IMAGE frame like ComfyUI's --preview-method (event 1, image type 2 = PNG)."""
+    png = PREVIEW_PNG.read_bytes() if PREVIEW_PNG.is_file() else b""
+    return (1).to_bytes(4, "big") + (2).to_bytes(4, "big") + png
+
+
 async def _execute(prompt_id: str, prompt: Dict[str, Any], cid: str):
     state["interrupt"] = False
     await asyncio.sleep(0.2)
@@ -110,6 +126,8 @@ async def _execute(prompt_id: str, prompt: Dict[str, Any], cid: str):
                 break
             await asyncio.sleep(STEP_DELAY)
             await _send(cid, {"type": "progress", "data": {"value": i, "max": steps, "prompt_id": prompt_id, "node": node_id}})
+            if i % 5 == 1 and PREVIEW_PNG.is_file():
+                await _send_bytes(cid, _preview_frame())
         prefix = str(node["inputs"].get("filename_prefix", "ComfyUI")).replace("/", "_")
         if ctype in VIDEO_NODES:
             name = f"{prefix}_{node_id}_{uuid.uuid4().hex[:4]}.webm"

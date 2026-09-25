@@ -183,6 +183,24 @@ class WorkflowRunner:
         return refs
 
     # --------------------------------------------------------------- running
+    @staticmethod
+    def _decode_preview(frame: bytes) -> Optional[Dict[str, Any]]:
+        """Decodes a ComfyUI binary WebSocket frame (live latent preview) into ``{image, mime}``."""
+        if not isinstance(frame, (bytes, bytearray)) or len(frame) < 8:
+            return None
+        event = int.from_bytes(frame[0:4], "big")
+        if event == 1:  # PREVIEW_IMAGE: [event][image type 1=jpeg 2=png][bytes]
+            kind = int.from_bytes(frame[4:8], "big")
+            return {"image": bytes(frame[8:]), "mime": "image/png" if kind == 2 else "image/jpeg"}
+        if event == 4:  # PREVIEW_IMAGE_WITH_METADATA: [event][metadata length][json][bytes]
+            size = int.from_bytes(frame[4:8], "big")
+            try:
+                meta = json.loads(frame[8:8 + size].decode("utf-8"))
+            except ValueError:
+                meta = {}
+            return {"image": bytes(frame[8 + size:]), "mime": meta.get("image_type") or "image/jpeg"}
+        return None
+
     def _wait_for_completion(
         self,
         ws: websocket.WebSocket,
@@ -206,7 +224,10 @@ class WorkflowRunner:
             except websocket.WebSocketConnectionClosedException as e:
                 raise ComfyUIError("Connection to ComfyUI was closed during the run") from e
             if not isinstance(out, str):
-                continue  # binary preview frames
+                preview = self._decode_preview(out)
+                if preview and progress_callback:
+                    progress_callback({"type": "preview_image", "data": preview})
+                continue
             message = json.loads(out)
             data = message.get("data") or {}
             if data.get("prompt_id") not in (None, prompt_id):

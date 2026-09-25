@@ -225,7 +225,7 @@ export default function StepRun({ workflow, onBack, onChanged }) {
 
       {run && (
         <div className="card card-pad" ref={runCardRef} style={{ scrollMarginTop: 76 }}>
-          <RunProgress run={run} />
+          <RunProgress run={run} onCancel={cancel} />
         </div>
       )}
 

@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.5
+# AI Hunters ComfyFlow v1.0.6
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -63,6 +63,16 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
   with upload flags or prompt-like names are recognised too), then the node's ComfyUI definition. Edit the file to
   change the defaults for every workflow; changes are picked up without a restart.
 * **Run screen** – shows exactly the run-time fields (with their labels and controls) and the expected outputs.
+* **Live node view** – every run card (Run screen, Generate) has a **Live node view** button; tick
+  *Open the live node view automatically* to open it on every run. It is a full-screen, editor-style graph of the
+  run (workflows **and** Python templates) where each node lights up as ComfyUI executes it:
+  *Waiting → Running (step 12/20, elapsed time) → Done / Cached / Failed*, connections animate into the running
+  node, the sampler shows ComfyUI's **live preview image** while it works, output nodes show their results
+  (click to preview / play), and a side list shows the **execution order with the time of each node**.
+  *Follow* keeps the running node centred; *Cancel run* and *Open editor* are in the top bar. The top line also
+  says what happens before the first node (uploading inputs, sending to ComfyUI, *Queued in ComfyUI*).
+  While a workflow runs, its **Workflow editor** shows the same states on the cards with a banner and the button.
+  Live previews need ComfyUI started with `--preview-method auto` (Start-all.bat and Settings → Start ComfyUI add it).
 
 * **Generate** (sidebar) – one screen for the four common jobs, each powered by a Python *template*:
 
@@ -115,7 +125,9 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
        (same drive, no extra space) or copied into the right ComfyUI models folder;
      * results open automatically in the **Image preview** or **Video preview** modal with **Download** / **Download all**.
 * **Models** – grid (5 per page) of all models: edit name, download URL (or local file path), category and save
-  location; add, delete, download, cancel. Downloads resume and run in the background.
+  location; add, delete, download, cancel. Downloads resume and run in the background, **one model at a time**
+  by default (the others show *Waiting in the queue* and start by themselves) – the most reliable way to fetch
+  multi-GB files. Change *Downloads at the same time* in Settings (`MAX_PARALLEL_DOWNLOADS`) if your connection is fast.
 * **Results** – every run with thumbnails, status, errors, preview and ZIP download.
 * **Settings** – ComfyUI status/start, *Sync nodes from ComfyUI* (regenerates typed node classes for your
   custom nodes), models folder, parallel downloads, Hugging Face / Civitai tokens.
@@ -129,7 +141,7 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
 | `COMFYUI_DIR`, `COMFYUI_PYTHON` | `comfyui\ComfyUI`, `comfyui\venv\Scripts\python.exe` | Installed by Setup.bat |
 | `COMFYUI_EXTRA_ARGS` | empty (`--cpu` without NVIDIA GPU) | e.g. `--lowvram` |
 | `MODELS_DIR` | empty = `<COMFYUI_DIR>\models` | A custom folder is registered with ComfyUI via `extra_model_paths.yaml` |
-| `MAX_PARALLEL_DOWNLOADS` | 2 | 1–8 |
+| `MAX_PARALLEL_DOWNLOADS` | 1 | 1–8 (1 = one model at a time, recommended) |
 | `AUTO_DOWNLOAD_MODELS` | true | Wizard step 2 starts missing downloads automatically |
 | `HF_TOKEN`, `CIVITAI_TOKEN` | empty | Only sent to huggingface.co / civitai.com |
 | `DATA_DIR` | `data` | models.json, workflows, runs, outputs, uploads |
@@ -174,14 +186,14 @@ ai-hunters-comfyflow/
 `GET /api/samples` · `POST /api/samples/open` ·
 `GET /api/templates` · `POST /api/templates/upload` · `DELETE /api/templates/{id}` ·
 `POST /api/templates/{id}/models|models/resolve|models/download-missing|generate` · `GET /api/templates/sample-images[/{name}]` ·
-`POST|GET /api/runs` · `GET|DELETE /api/runs/{id}` · `POST /api/runs/{id}/cancel` ·
+`POST|GET /api/runs` · `GET|DELETE /api/runs/{id}` · `POST /api/runs/{id}/cancel` · `GET /api/runs/{id}/graph|preview` ·
 `GET /api/runs/{id}/files/{filename}[?download=1]` · `GET /api/runs/{id}/zip` · `POST|GET /api/uploads`
 
 ## Development
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 60 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 62 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 
@@ -195,6 +207,10 @@ cd backend
   (`<model>.part`, shown as “… already downloaded”) and only stop after 6 attempts in a row without progress;
   press **Download** to continue from the same point. Permanent errors (401/403/404, a web page instead of a file)
   are not retried.
+* **Several downloads at once keep dropping** – since v1.0.6 models download one by one (an existing `.env` with the
+  old value 2 is switched to 1 once on start). Keep *Downloads at the same time* at 1 for big models.
+* **Live node view shows no preview image** – the preview needs `--preview-method auto`; if you start ComfyUI yourself,
+  add it to its command line. Node states and timings work without it.
 * **A download fails with 401/403** – the model is gated: add a Hugging Face token in Settings (and accept the
   licence on the model page) or a Civitai key.
 * **A node shows as GenericNode / widget values look wrong** – install the custom node (add it to

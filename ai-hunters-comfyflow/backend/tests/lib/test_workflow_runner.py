@@ -146,3 +146,15 @@ def test_upload_flag_uploads_local_image(runner, mocker, tmp_path):
     runner.run_workflow(wf, output_dir=str(tmp_path))
     sent = post.call_args.kwargs["json"]["prompt"]
     assert sent[node.id]["inputs"]["image"] == "in.png"
+
+
+def test_decode_binary_preview_frames():
+    from cb2c_py.lib.workflow_runner import WorkflowRunner
+
+    jpeg = (1).to_bytes(4, "big") + (1).to_bytes(4, "big") + b"\xff\xd8data"
+    assert WorkflowRunner._decode_preview(jpeg) == {"image": b"\xff\xd8data", "mime": "image/jpeg"}
+    meta = b'{"image_type": "image/png", "node_id": "3"}'
+    framed = (4).to_bytes(4, "big") + len(meta).to_bytes(4, "big") + meta + b"\x89PNG"
+    assert WorkflowRunner._decode_preview(framed) == {"image": b"\x89PNG", "mime": "image/png"}
+    assert WorkflowRunner._decode_preview(b"\x00\x00") is None
+    assert WorkflowRunner._decode_preview((9).to_bytes(4, "big") * 3) is None

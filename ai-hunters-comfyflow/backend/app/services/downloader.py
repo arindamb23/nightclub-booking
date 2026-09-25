@@ -118,6 +118,11 @@ class Downloader:
             job.downloaded = job.total = path.stat().st_size
             self._publish(job)
             return job.to_dict()
+        ahead = sum(1 for j in self._jobs.values() if j is not job and j.status in ("queued", "downloading"))
+        workers = get_settings().max_parallel_downloads
+        if ahead >= workers:
+            job.note = (f"Waiting in the queue ({ahead} ahead) — models download one at a time"
+                        if workers == 1 else f"Waiting in the queue ({ahead} ahead, {workers} at a time)")
         self._publish(job)
         self._pool().submit(self._run, job)
         return job.to_dict()

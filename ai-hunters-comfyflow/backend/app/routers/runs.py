@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from fastapi.responses import JSONResponse
 
-from app.services.runs import runs, RunError, ModelsMissing, uploads_dir
+from app.services.runs import runs, RunError, ModelsMissing, uploads_dir, previews
 from app.services.workflows import WorkflowError
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -46,6 +46,28 @@ def get_run(run_id: str):
         return runs.get(run_id)
     except RunError as e:
         raise HTTPException(404, str(e))
+
+
+@router.get("/runs/{run_id}/graph")
+def run_graph(run_id: str):
+    """Nodes and connections of the run, for the live node-by-node view."""
+    from app.services import graph
+
+    try:
+        return graph.run_graph(runs.get(run_id))
+    except RunError as e:
+        raise HTTPException(404, str(e))
+    except (WorkflowError, ValueError) as e:
+        raise HTTPException(409, f"The node view is not available for this run: {e}")
+
+
+@router.get("/runs/{run_id}/preview")
+def run_preview(run_id: str):
+    """Latest live preview frame ComfyUI sent while sampling (404 when there is none)."""
+    frame = previews.get(run_id)
+    if not frame:
+        raise HTTPException(404, "No live preview yet.")
+    return Response(frame[0], media_type=frame[1], headers={"Cache-Control": "no-store"})
 
 
 @router.post("/runs/{run_id}/cancel")

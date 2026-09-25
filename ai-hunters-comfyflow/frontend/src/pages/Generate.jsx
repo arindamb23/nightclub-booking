@@ -379,7 +379,7 @@ export default function Generate() {
               </div>
             </div>
 
-            {run && run.template_id === template.id && <div className="card card-pad"><RunProgress run={run} title="Generation" /></div>}
+            {run && run.template_id === template.id && <div className="card card-pad"><RunProgress run={run} title="Generation" onCancel={cancel} /></div>}
 
             <div className="card">
               <div className="card-head"><h3>Recent results</h3></div>

@@ -75,6 +75,33 @@ def _check_run_id(run_id: str) -> str:
     return run_id
 
 
+class PreviewStore:
+    """Latest live preview frame per run (kept in memory only)."""
+
+    def __init__(self) -> None:
+        self._frames: Dict[str, tuple] = {}
+        self._lock = threading.Lock()
+
+    def put(self, run_id: str, image: bytes, mime: str) -> None:
+        if not image:
+            return
+        with self._lock:
+            n = self._frames.get(run_id, (b"", "", 0))[2] + 1
+            self._frames[run_id] = (image, mime, n)
+            if len(self._frames) > 20:  # forget old runs
+                self._frames.pop(next(iter(self._frames)))
+
+    def get(self, run_id: str):
+        return self._frames.get(run_id)
+
+    def count(self, run_id: str) -> int:
+        f = self._frames.get(run_id)
+        return f[2] if f else 0
+
+
+previews = PreviewStore()
+
+
 class RunManager:
     def __init__(self) -> None:
         self._cancel: Dict[str, threading.Event] = {}
@@ -274,18 +301,61 @@ class RunManager:
         runner = comfy.runner()
         executed: set = set()
 
+        prog = run["progress"]
+        prog.setdefault("nodes", {})  # node id -> {"state": running|done|cached|error, "started", "ended"}
+        prog.setdefault("phase", "")
+
+        def mark(nid: str, state: str) -> None:
+            entry = prog["nodes"].setdefault(nid, {"order": len(prog["nodes"]) + 1})
+            now = round(time.time(), 3)
+            if state == "running":
+                entry["started"] = now
+            elif entry.get("state") == "running" or state in ("cached", "error"):
+                entry["ended"] = now
+            entry["state"] = state
+
+        def finish_running() -> None:
+            for nid, entry in prog["nodes"].items():
+                if entry.get("state") == "running":
+                    mark(nid, "done")
+
         def on_message(message: Dict[str, Any]) -> None:
             mtype = message.get("type")
             data = message.get("data") or {}
-            prog = run["progress"]
-            if mtype == "executing" and data.get("node") is not None:
-                executed.add(str(data["node"]))
-                prog["node"] = str(data["node"])
-                node = wf.nodes.get(str(data["node"]))
+            if mtype == "preview_image":  # binary latent preview frame from ComfyUI
+                previews.put(run["id"], data.get("image") or b"", data.get("mime") or "image/jpeg")
+                bus.publish({"type": "run_preview", "run_id": run["id"], "node": prog.get("node"), "n": previews.count(run["id"])})
+                return
+            if mtype == "status":
+                remaining = ((data.get("status") or {}).get("exec_info") or {}).get("queue_remaining")
+                if prog["node"] is None and remaining:
+                    prog["phase"] = f"Queued in ComfyUI ({remaining} job(s) in the queue)"
+                else:
+                    return
+            elif mtype == "execution_start":
+                prog["phase"] = "ComfyUI started the workflow"
+            elif mtype == "executing" and data.get("node") is not None:
+                nid = str(data["node"])
+                finish_running()
+                executed.add(nid)
+                mark(nid, "running")
+                prog["node"] = nid
+                node = wf.nodes.get(nid)
                 prog["class_type"] = node._original_name if node is not None else None
                 prog["value"], prog["max"] = 0, 0
+                prog["phase"] = ""
+            elif mtype == "executing":  # node None: the prompt is finished
+                finish_running()
             elif mtype == "execution_cached":
-                executed.update(str(n) for n in data.get("nodes") or [])
+                for n in data.get("nodes") or []:
+                    executed.add(str(n))
+                    mark(str(n), "cached")
+            elif mtype == "executed" and data.get("node") is not None:
+                executed.add(str(data["node"]))
+                if prog["nodes"].get(str(data["node"]), {}).get("state") == "running":
+                    mark(str(data["node"]), "done")
+            elif mtype == "execution_error" and data.get("node_id") is not None:
+                mark(str(data["node_id"]), "error")
             elif mtype == "progress":
                 prog["value"], prog["max"] = data.get("value", 0), data.get("max", 0)
             else:
@@ -306,8 +376,10 @@ class RunManager:
             else:
                 wf = workflows.build(run["workflow_id"])
             run["progress"]["total"] = len(wf.nodes)
+            prog["phase"] = "Uploading input files to ComfyUI"
             self._apply_overrides(wf, run["overrides"], runner)
             self._upload_local_media(wf, runner)
+            prog["phase"] = "Sending the workflow to ComfyUI"
             run["status"] = "running"
             self._save(run)
             self._publish(run)
@@ -321,6 +393,7 @@ class RunManager:
                 {k: o[k] for k in ("filename", "kind", "size", "node_id", "type")} for o in outputs
             ]
             run["status"] = "succeeded"
+            finish_running()
             run["progress"]["done"] = run["progress"]["total"]
             if not outputs:
                 run["error"] = "The workflow finished but produced no output files (add a Save/Preview node)."
@@ -343,6 +416,12 @@ class RunManager:
             run["status"] = "failed"
             run["error"] = f"{type(e).__name__}: {e}"
         finally:
+            prog["phase"] = ""
+            if run["status"] != "succeeded":
+                for entry in prog["nodes"].values():
+                    if entry.get("state") == "running":
+                        entry["state"] = "error" if run["status"] == "failed" else "stopped"
+                        entry["ended"] = round(time.time(), 2)
             run["finished_at"] = dt.datetime.now().isoformat(timespec="seconds")
             run["duration"] = round(time.time() - started, 1)
             self._save(run)

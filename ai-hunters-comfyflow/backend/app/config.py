@@ -116,7 +116,7 @@ def load_settings() -> Settings:
         models_dir=_path(models_raw, str(comfy_dir / "models")),
         models_dir_custom=bool(models_raw),
         data_dir=_path(v.get("DATA_DIR", ""), "data"),
-        max_parallel_downloads=max(1, min(8, int((v.get("MAX_PARALLEL_DOWNLOADS") or "2").strip() or 2))),
+        max_parallel_downloads=max(1, min(8, int((v.get("MAX_PARALLEL_DOWNLOADS") or "1").strip() or 1))),
         auto_download_models=(v.get("AUTO_DOWNLOAD_MODELS") or "true").strip().lower() == "true",
         hf_token=(v.get("HF_TOKEN") or "").strip(),
         civitai_token=(v.get("CIVITAI_TOKEN") or "").strip(),

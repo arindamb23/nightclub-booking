@@ -111,3 +111,22 @@ def test_complete_partial_file_is_kept_on_416(client, flaky_url):
     client.post("/api/models/download", json={"name": "complete.safetensors"})
     row = wait_for(lambda: (lambda r: r if r["status"] in ("ready", "error") else None)(_row(client, "complete.safetensors")))
     assert row["status"] == "ready" and target.read_bytes() == DATA
+
+
+
+def test_old_parallel_default_is_moved_to_one_by_one(tmp_path, monkeypatch):
+    import types
+    import app.config as config
+    from app.main import _migrate_parallel_downloads
+
+    env = tmp_path / ".env"
+    env.write_text("BACKEND_PORT=3015\nMAX_PARALLEL_DOWNLOADS=2\n", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(config, "ENV_PATH", env)
+    monkeypatch.setattr(config, "update_env", lambda u: calls.append(u))
+    monkeypatch.setattr(config, "reload_settings", lambda: None)
+    settings = types.SimpleNamespace(data_dir=tmp_path)
+    _migrate_parallel_downloads(settings)
+    assert calls == [{"MAX_PARALLEL_DOWNLOADS": "1"}]
+    _migrate_parallel_downloads(settings)  # only once: a later choice of 2 is kept
+    assert len(calls) == 1

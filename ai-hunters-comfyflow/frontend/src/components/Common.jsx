@@ -25,7 +25,7 @@ const MODEL_STATUS = {
   ready: ['badge-success', 'Ready'],
   missing: ['badge-warning', 'Missing'],
   no_url: ['badge-danger', 'No URL'],
-  queued: ['badge-info', 'Queued'],
+  queued: ['', 'Waiting'],
   downloading: ['badge-info', 'Downloading'],
   error: ['badge-danger', 'Failed'],
   cancelled: ['', 'Cancelled'],
@@ -37,7 +37,10 @@ export function ModelStatus({ status, job, partial }) {
   return (
     <div className="status-cell">
       <span className={`badge ${cls}`} style={{ alignSelf: 'flex-start' }}><span className="badge-dot" />{label}{active && job?.percent != null ? ` ${Math.round(job.percent)}%` : ''}</span>
-      {active && (
+      {status === 'queued' && (
+        <span className="small muted"><Icon name="clock" size={11} /> {job?.note || 'Starts when the current download finishes'}</span>
+      )}
+      {status === 'downloading' && (
         <>
           <Progress percent={job?.percent} indeterminate={job?.percent == null} />
           <span className="small muted">

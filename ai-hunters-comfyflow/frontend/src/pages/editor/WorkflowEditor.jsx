@@ -12,6 +12,8 @@ import { useMessages } from '../../context/MessageContext.jsx'
 import { useEvent } from '../../context/EventsContext.jsx'
 import { WorkflowNode, ModelsGroupNode } from './NodeCards.jsx'
 import Inspector from './Inspector.jsx'
+import LiveRunView, { nodeState } from './LiveRunView.jsx'
+import { RunStatus } from '../../components/Common.jsx'
 import { autoLayout } from './layout.js'
 import { GROUP_ID, LEGEND, ROLE, typeColor } from './theme.js'
 
@@ -60,7 +62,21 @@ function EditorCanvas() {
     }
   }, [id, msg, navigate])
   useEffect(() => { load() }, [load])
-  useEvent('run', (ev) => { if (ev.run.workflow_id === id && ev.run.status === 'succeeded') load() })
+  // a run of this workflow (started here, in the wizard or elsewhere) lights up the cards node by node
+  const [liveRun, setLiveRun] = useState(null)
+  const [liveOpen, setLiveOpen] = useState(false)
+  useEffect(() => {
+    api.get(`/api/runs?workflow_id=${encodeURIComponent(id)}`).then((d) => {
+      const r = d.runs[0]
+      if (r && ['preparing', 'queued', 'running'].includes(r.status)) setLiveRun(r)
+    }).catch(() => {})
+  }, [id])
+  useEvent('run', (ev) => {
+    if (ev.run.workflow_id !== id) return
+    setLiveRun(ev.run)
+    if (ev.run.status === 'succeeded') load()
+  })
+  const liveActive = liveRun && ['preparing', 'queued', 'running'].includes(liveRun.status)
 
   const dirty = Object.keys(edits).length > 0 || Object.keys(cfgs).length > 0 || Object.keys(outputs).length > 0 || posDirty
   const runtimeOf = useCallback((nid, f) => cfgs[nid]?.[f.name]?.runtime ?? f.runtime, [cfgs])
@@ -75,6 +91,10 @@ function EditorCanvas() {
       data: {
         node: n, values: edits[n.id] || {}, onPreview: openPreview, runtime: runtimeOf,
         summary: summaryFor(n, edits[n.id] || {}),
+        live: liveRun ? {
+          state: nodeState(liveRun, n.id), entry: liveRun.progress?.nodes?.[n.id],
+          step: liveRun.progress?.node === n.id ? { value: liveRun.progress.value, max: liveRun.progress.max } : null,
+        } : null,
       },
     }))
     if (hidden.size) {
@@ -97,7 +117,7 @@ function EditorCanvas() {
       rfEdges.push({ id: key, source: s, target: t, style: { stroke: color, strokeWidth: 2 }, data: { type: e.type }, animated: false })
     })
     return { nodes: rfNodes, edges: rfEdges }
-  }, [graph, view, edits, openPreview, runtimeOf])
+  }, [graph, view, edits, openPreview, runtimeOf, liveRun])
 
   // positions: saved ones when every visible node has one, otherwise auto layout
   useEffect(() => {
@@ -244,6 +264,24 @@ function EditorCanvas() {
         <button className="btn" onClick={save} disabled={saving || !dirty}>{saving ? <Spinner /> : <Icon name="save" />}Save</button>
         <button className="btn btn-primary" onClick={run}><Icon name="play" size={13} />Run</button>
       </div>
+      {liveRun && (liveActive || liveOpen || liveRun.progress?.nodes) && (
+        <div className="editor-live">
+          <RunStatus status={liveRun.status} />
+          <span className="grow truncate">
+            {liveActive
+              ? liveRun.status === 'preparing' ? 'Downloading models before the run starts…'
+                : liveRun.progress?.class_type ? <>Executing <b>{graph.nodes.find((n) => n.id === liveRun.progress.node)?.title || liveRun.progress.class_type}</b> · {liveRun.progress.done} / {liveRun.progress.total} nodes</>
+                  : liveRun.progress?.phase || 'Waiting for ComfyUI…'
+              : `Last run ${liveRun.status} — the cards show which nodes ran.`}
+          </span>
+          <button className="btn btn-sm" onClick={() => setLiveOpen(true)}><Icon name="workflow" size={14} />Live node view</button>
+          {!liveActive && <button className="btn btn-sm btn-ghost" onClick={() => setLiveRun(null)}>Hide</button>}
+        </div>
+      )}
+      {liveOpen && liveRun && (
+        <LiveRunView run={liveRun} onClose={() => setLiveOpen(false)}
+          onCancel={() => api.post(`/api/runs/${liveRun.id}/cancel`).catch((e) => msg.showError(e))} />
+      )}
       <div className="editor-main">
         <div className="editor-canvas" ref={canvasRef}>
           <ReactFlow

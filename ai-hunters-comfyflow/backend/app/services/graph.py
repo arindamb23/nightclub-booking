@@ -382,3 +382,53 @@ def node_media_path(wid: str, nid: str, input_name: str) -> Path:
         if rc.is_file() and any(rc.is_relative_to(a) for a in allowed):
             return rc
     raise WorkflowError(f"'{value}' is not on this computer (it may exist only in ComfyUI's input folder).")
+
+
+# ----------------------------------------------------------------- live run view
+def _light_graph(prompt: Dict[str, Any]) -> Dict[str, Any]:
+    """Nodes + typed edges of any API prompt (used for template runs, which have no editor)."""
+    cat: NodeCatalog = comfy.catalog()
+    feeds: Dict[str, set] = {}
+    for node in prompt.values():
+        for name, value in node["inputs"].items():
+            if _is_link(value):
+                feeds.setdefault(str(value[0]), set()).add(name)
+    nodes, edges = [], []
+    for nid, node in prompt.items():
+        ct = node["class_type"]
+        spec = cat.spec(ct)
+        info = controlmap.node_info(ct)
+        title = (node.get("_meta") or {}).get("title") or (spec or {}).get("display_name") or ct
+        if title == ct and info["role"] == "prompt":
+            title = "Positive Prompt" if "positive" in feeds.get(nid, set()) else "Negative Prompt" if "negative" in feeds.get(nid, set()) else title
+        summary = ""
+        for name, value in node["inputs"].items():
+            if _is_link(value):
+                src = prompt.get(str(value[0]), {})
+                outs = (cat.spec(src.get("class_type", "")) or {}).get("outputs") or []
+                dtype = outs[value[1]]["type"] if value[1] < len(outs) else "*"
+                edges.append({
+                    "id": f"{value[0]}:{value[1]}->{nid}:{name}", "source": str(value[0]), "target": nid,
+                    "slot": value[1], "input": name, "type": dtype if isinstance(dtype, str) else "COMBO",
+                })
+            elif not summary and isinstance(value, str) and value and (info["role"] in ("prompt", "model", "input") or name in ("text", "prompt")):
+                summary = Path(value).name if info["role"] in ("model", "input") else value[:90]
+        nodes.append({
+            "id": nid, "class_type": ct, "title": title, "role": info["role"], "icon": info.get("icon"),
+            "output": info.get("output") if info["role"] == "output" else None, "summary": summary,
+            "fields": [], "results": [], "models": [], "known": spec is not None, "position": None,
+        })
+    return {"nodes": nodes, "edges": edges}
+
+
+def run_graph(run: Dict[str, Any]) -> Dict[str, Any]:
+    """The graph a run executes, for the live node-by-node progress view."""
+    if run.get("template_id"):
+        from app.services import templates
+
+        wf = templates.build(run["template_id"], run.get("template_values") or {}, placeholder=True)
+        g = _light_graph(wf.to_prompt())
+    else:
+        full = build_graph(run["workflow_id"])
+        g = {"nodes": [{**n, "results": []} for n in full["nodes"]], "edges": full["edges"]}
+    return {"run_id": run["id"], "name": run.get("workflow_name"), **g}

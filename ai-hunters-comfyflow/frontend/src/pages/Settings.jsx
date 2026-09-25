@@ -108,8 +108,9 @@ export default function Settings() {
                 <span className="hint">Now: <span className="mono">{s.models_dir}</span>. A custom folder is registered with ComfyUI through extra_model_paths.yaml.</span>
               </div>
               <div className="form-grid">
-                <div className="field"><label htmlFor="s-par">Parallel downloads</label>
-                  <select id="s-par" className="select" value={form.MAX_PARALLEL_DOWNLOADS} onChange={set('MAX_PARALLEL_DOWNLOADS')}>{[1, 2, 3, 4].map((n) => <option key={n}>{n}</option>)}</select>
+                <div className="field"><label htmlFor="s-par">Downloads at the same time</label>
+                  <select id="s-par" className="select" value={form.MAX_PARALLEL_DOWNLOADS} onChange={set('MAX_PARALLEL_DOWNLOADS')}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n === 1 ? '1 — one by one (recommended)' : n}</option>)}</select>
+                  <span className="hint">Big models download most reliably one at a time; the others wait in the queue.</span>
                 </div>
                 <div className="field"><span className="label">Wizard</span>
                   <label className="checkbox" style={{ height: 36 }}><input type="checkbox" checked={form.AUTO_DOWNLOAD_MODELS === 'true'} onChange={set('AUTO_DOWNLOAD_MODELS')} />Auto-download missing models</label>

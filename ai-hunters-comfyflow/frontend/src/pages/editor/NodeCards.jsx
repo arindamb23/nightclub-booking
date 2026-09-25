@@ -3,6 +3,7 @@ import { Handle, Position } from '@xyflow/react'
 import Icon from '../../components/Icon.jsx'
 import { mediaInfo } from '../../components/FieldControl.jsx'
 import { ROLE, OUTPUT_ICON } from './theme.js'
+import { NodeRunBadge } from './LiveRunView.jsx'
 
 function ModelBadge({ models }) {
   if (!models?.length) return null
@@ -33,7 +34,7 @@ export const WorkflowNode = memo(({ data, selected }) => {
   const runtime = node.fields.filter((f) => data.runtime(node.id, f)).length
   const dirty = Object.keys(values || {}).length > 0
   return (
-    <div className={`wnode ${selected ? 'selected' : ''} ${node.known ? '' : 'unknown'}`} style={{ '--role': role.color, '--role-soft': role.soft }}>
+    <div className={`wnode ${selected ? 'selected' : ''} ${node.known ? '' : 'unknown'} ${data.live ? `live live-${data.live.state}` : ''}`} style={{ '--role': role.color, '--role-soft': role.soft }}>
       <Handle type="target" position={Position.Left} className="whandle" />
       <div className="wnode-head">
         <span className="wnode-icon"><Icon name={node.icon || role.icon} size={16} /></span>
@@ -57,7 +58,9 @@ export const WorkflowNode = memo(({ data, selected }) => {
         {node.role === 'output' && node.output && <span className="nbadge nbadge-out"><Icon name={OUTPUT_ICON[node.output]} size={11} />{node.output}</span>}
         <ModelBadge models={node.models} />
         {!node.known && <span className="nbadge nbadge-warn" title="This node type is not installed in ComfyUI">unknown node</span>}
+        {data.live && <NodeRunBadge state={data.live.state} entry={data.live.entry} step={data.live.step} now={Date.now() / 1000} />}
       </div>
+      {data.live?.step?.max > 0 && <div className="live-bar"><i style={{ width: `${(data.live.step.value / data.live.step.max) * 100}%` }} /></div>}
       <Handle type="source" position={Position.Right} className="whandle" />
     </div>
   )

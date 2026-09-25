@@ -79,7 +79,13 @@ def test_user_template_upload_and_run(client):
     t = up.json()["templates"][0]
     assert t["id"] == "user:my_template:my_template" and t["name"] == "My Test Template"
     run = client.post(f"/api/templates/{t['id']}/generate", json={"values": {"prompt": "hi"}}).json()
-    assert _wait_run(client, run["id"])["status"] == "succeeded"
+    done = _wait_run(client, run["id"])
+    assert done["status"] == "succeeded"
+    # template runs have a node view too (built from the template's prompt)
+    g = client.get(f"/api/runs/{run['id']}/graph").json()
+    assert sorted(n["class_type"] for n in g["nodes"]) == ["EmptyLatentImage", "SaveImage"]
+    assert g["edges"][0]["type"] == "LATENT" or g["edges"][0]["source"] in {n["id"] for n in g["nodes"]}
+    assert set(done["progress"]["nodes"]) == {n["id"] for n in g["nodes"]}
     bad = client.post("/api/templates/upload", files={"file": ("x.py", b"x = 1\n", "text/x-python")})
     assert bad.status_code == 400 and "No template function" in bad.json()["detail"]
     assert client.delete(f"/api/templates/{t['id']}").status_code == 200
