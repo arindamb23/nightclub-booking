@@ -10,7 +10,10 @@ execution error.
 """
 import argparse
 import asyncio
+import re
 import shutil
+import sys
+import time
 import tempfile
 import uuid
 from pathlib import Path
@@ -27,20 +30,67 @@ PREVIEW_PNG = ROOT / "samples" / "images" / "girl.png"
 VIDEO_NODES = ("SaveAnimatedWEBP", "SaveVideo", "VHS_VideoCombine", "SaveWEBM", "SaveAnimatedPNG")
 
 app = FastAPI(title="Fake ComfyUI")
-state: Dict[str, Any] = {"clients": {}, "history": {}, "interrupt": False, "dir": Path(tempfile.mkdtemp(prefix="fakecomfy_"))}
+state: Dict[str, Any] = {"clients": {}, "history": {}, "interrupt": False, "dir": Path(tempfile.mkdtemp(prefix="fakecomfy_")),
+                         "hidden": set(), "custom_nodes": None}
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/ (cb2c_py) when run as a script
 (state["dir"] / "output").mkdir()
 (state["dir"] / "input").mkdir()
 STEP_DELAY = 0.05
+FULL_OBJECT_INFO = False
+HIDDEN_PACKS: Dict[str, str] = {}  # node type -> package folder that 'provides' it
 HISTORY_DELAY = 0.6
 
 
 @app.get("/system_stats")
 def system_stats():
+    if time.time() < state.get("down_until", 0):
+        return JSONResponse(status_code=503, content={})
     return {"system": {"comfyui_version": "fake-1.0", "os": "fake"}, "devices": [{"name": "Fake GPU", "type": "cuda", "vram_total": 8 * 1024**3}]}
+
+
+def _wrapper_object_info() -> Dict[str, Any]:
+    """object_info built from the generated node wrappers (same specs the converter falls back to)."""
+    from cb2c_py.tools.convert_workflow import NodeCatalog
+
+    gen = ROOT / "backend" / "cb2c_py" / "nodes" / "generated"
+    cat = NodeCatalog()
+    info: Dict[str, Any] = {}
+    for f in gen.glob("*.py"):
+        if f.name.startswith("_"):
+            continue
+        text = f.read_text(encoding="utf-8", errors="ignore")
+        m = re.search(r'_original_name(?:\s*:\s*\w+)?\s*=\s*["\']([^"\']+)', text) or re.search(r'super\(\).__init__\(\s*["\']([^"\']+)', text)
+        ct = m.group(1) if m else None
+        spec = cat.spec(ct) if ct else None
+        if not spec:
+            continue
+        info[ct] = {
+            "input": {"required": {i["name"]: [i["type"], i["opts"]] for i in spec["inputs"] if not i["optional"]},
+                      "optional": {i["name"]: [i["type"], i["opts"]] for i in spec["inputs"] if i["optional"]}},
+            "input_order": {"required": [i["name"] for i in spec["inputs"] if not i["optional"]],
+                            "optional": [i["name"] for i in spec["inputs"] if i["optional"]]},
+            "output": [o["type"] for o in spec["outputs"]], "output_name": [o["name"] for o in spec["outputs"]],
+            "display_name": ct,
+        }
+    return info
 
 
 @app.get("/object_info")
 def object_info():
+    if not FULL_OBJECT_INFO:
+        return {}
+    if "object_info" not in state:
+        state["object_info"] = _wrapper_object_info()
+    return {k: v for k, v in state["object_info"].items() if k not in state["hidden"]}
+
+
+@app.get("/api/manager/reboot")
+def manager_reboot():
+    """Like ComfyUI-Manager: restart; nodes whose package folder now exists are loaded."""
+    custom = state["custom_nodes"] or (state["dir"] / "custom_nodes")
+    installed = {p.name.lower() for p in custom.iterdir()} if custom.exists() else set()
+    state["hidden"] = {ct for ct in state["hidden"] if HIDDEN_PACKS.get(ct, "").lower() not in installed}
+    state["down_until"] = time.time() + 2
     return {}
 
 
@@ -181,6 +231,10 @@ async def queue_prompt(request: Request):
     }
     if errors:
         return JSONResponse(status_code=400, content={"error": {"message": "Prompt outputs failed validation", "details": ""}, "node_errors": errors})
+    unknown = sorted({n.get("class_type") for n in prompt.values()} - set(state["object_info"])) if FULL_OBJECT_INFO and "object_info" in state else []
+    unknown = sorted(set(unknown) | {n.get("class_type") for n in prompt.values() if n.get("class_type") in state["hidden"]})
+    if unknown:
+        return JSONResponse(status_code=400, content={"error": {"type": "invalid_prompt", "message": f"Cannot execute because node {unknown[0]} does not exist.", "details": ""}, "node_errors": {}})
     prompt_id = str(uuid.uuid4())
     asyncio.create_task(_execute(prompt_id, prompt, body.get("client_id", "anon")))
     return {"prompt_id": prompt_id, "number": 1, "node_errors": {}}
@@ -191,6 +245,16 @@ if __name__ == "__main__":
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8188)
     ap.add_argument("--step-delay", type=float, default=0.05)
+    ap.add_argument("--full-object-info", action="store_true", help="serve /object_info built from the node wrappers")
+    ap.add_argument("--hide", default="", help="NodeType=PackFolder,... pretend these custom nodes are not installed")
+    ap.add_argument("--custom-nodes", default="", help="folder whose sub-folders count as installed packages")
     a = ap.parse_args()
     STEP_DELAY = a.step_delay
+    FULL_OBJECT_INFO = a.full_object_info
+    for pair in filter(None, a.hide.split(",")):
+        ct, _, pack = pair.partition("=")
+        HIDDEN_PACKS[ct] = pack
+    state["hidden"] = set(HIDDEN_PACKS)
+    if a.custom_nodes:
+        state["custom_nodes"] = Path(a.custom_nodes)
     uvicorn.run(app, host=a.host, port=a.port, log_level="warning")

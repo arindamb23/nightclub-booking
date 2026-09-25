@@ -204,7 +204,9 @@ def ui_to_api(ui: Dict[str, Any], catalog: NodeCatalog):
 
     Returns ``(prompt, titles, notes, model_hints, warnings)``.
     """
-    warnings: List[str] = []
+    from cb2c_py.tools.subgraphs import expand_ui
+
+    ui, warnings = expand_ui(ui, catalog)  # group nodes / subgraphs -> ordinary nodes (as ComfyUI's UI does)
     notes: List[str] = []
     titles: Dict[str, str] = {}
     model_hints: List[Dict[str, str]] = []

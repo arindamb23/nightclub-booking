@@ -7,6 +7,36 @@ import { useMessages } from '../../context/MessageContext.jsx'
 import { useEvent } from '../../context/EventsContext.jsx'
 import { applyDownloadEvent } from '../Models.jsx'
 import { formatBytes, shortPath } from '../../utils/format.js'
+import { CustomNodeRows, RestartBanner, useCustomNodes } from '../../components/CustomNodes.jsx'
+
+function CustomNodesCard({ workflow, onChanged }) {
+  const [check, setCheck] = useState(null)
+  const load = useCallback(() => api.get(`/api/workflows/${workflow.id}/nodes-check`).then(setCheck).catch(() => setCheck(null)), [workflow.id])
+  useEffect(() => { load() }, [load])
+  const state = useCustomNodes(check?.packs, () => { load(); onChanged?.() })
+  if (!check) return null
+  if (!check.available) {
+    return <div className="callout callout-info"><Icon name="info" /><div>{check.message} Custom nodes this workflow needs are listed here once ComfyUI runs.</div></div>
+  }
+  if (!check.packs.length && state.restart.status !== 'done') return null
+  return (
+    <div className="card">
+      <div className="card-head">
+        <div><h3>Custom nodes</h3><span className="muted small">Node types this workflow uses that ComfyUI does not have yet</span></div>
+        {check.packs.length > 0 && (
+          <button className="btn btn-primary btn-sm" onClick={state.installAll} disabled={state.busy}>
+            {state.busy ? <Spinner size={14} /> : <Icon name="download" size={14} />}Install all &amp; restart ComfyUI
+          </button>
+        )}
+      </div>
+      <div className="card-body stack" style={{ gap: 12 }}>
+        {state.error && <div className="callout callout-warning"><Icon name="alert" /><div>{state.error}</div></div>}
+        <RestartBanner state={state} />
+        <CustomNodeRows state={state} compact />
+      </div>
+    </div>
+  )
+}
 
 export default function StepModels({ workflow, onBack, onNext, onChanged }) {
   const msg = useMessages()
@@ -167,6 +197,7 @@ export default function StepModels({ workflow, onBack, onNext, onChanged }) {
 
   return (
     <div className="stack">
+      <CustomNodesCard workflow={workflow} onChanged={onChanged} />
       <div className="card card-pad">
         <div className="row between row-wrap">
           <div className="row row-wrap" style={{ gap: 14 }}>

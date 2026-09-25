@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from app.services.nodepacks import NodesMissing
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
@@ -28,6 +29,9 @@ class RunIn(BaseModel):
 def start_run(body: RunIn):
     try:
         return runs.start(body.workflow_id, body.overrides)
+    except NodesMissing as e:
+        return JSONResponse(status_code=409, content={"detail": {
+            "code": "nodes_missing", "message": str(e), "workflow_id": body.workflow_id, "packs": e.packs}})
     except ModelsMissing as e:
         return JSONResponse(status_code=409, content={"detail": {
             "code": "models_missing", "message": str(e), "workflow_id": body.workflow_id, "models": e.models}})

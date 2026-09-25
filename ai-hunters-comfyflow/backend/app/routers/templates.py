@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from app.services.nodepacks import NodesMissing
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
@@ -96,6 +97,9 @@ def download_missing(tid: str, body: ValuesIn):
 def generate(tid: str, body: ValuesIn):
     try:
         return runs.start_template(tid, body.values)
+    except NodesMissing as e:
+        return JSONResponse(status_code=409, content={"detail": {
+            "code": "nodes_missing", "message": str(e), "template_id": tid, "packs": e.packs}})
     except ModelsMissing as e:
         return JSONResponse(status_code=409, content={"detail": {
             "code": "models_missing", "message": str(e), "template_id": tid, "models": e.models}})

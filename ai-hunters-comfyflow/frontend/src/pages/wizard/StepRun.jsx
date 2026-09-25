@@ -8,6 +8,7 @@ import { useEvent } from '../../context/EventsContext.jsx'
 import { useSystem } from '../../context/SystemContext.jsx'
 import { formatDate, formatDuration } from '../../utils/format.js'
 import MissingModelsModal from '../../components/MissingModelsModal.jsx'
+import CustomNodesModal from '../../components/CustomNodes.jsx'
 import RunProgress from '../../components/RunProgress.jsx'
 import FieldControl from '../../components/FieldControl.jsx'
 import { Link } from 'react-router-dom'
@@ -44,6 +45,7 @@ export default function StepRun({ workflow, onBack, onChanged }) {
   const [history, setHistory] = useState([])
   const [starting, setStarting] = useState(false)
   const [missing, setMissing] = useState(null) // { models, reason }
+  const [nodesNeeded, setNodesNeeded] = useState(null)
   const runRef = useRef(null)
   const startRef = useRef(null)
   const runCardRef = useRef(null)
@@ -73,6 +75,8 @@ export default function StepRun({ workflow, onBack, onChanged }) {
       const items = outputsToItems(r)
       if (items.length) openPreview(items, 0)
       else msg.showWarning(r.error || 'The run finished without image or video outputs.', { title: 'No previewable output' })
+    } else if (r.status === 'failed' && r.error_code === 'nodes_missing' && r.missing_nodes?.length) {
+      setNodesNeeded(r.missing_nodes)
     } else if (r.status === 'failed' && r.error_code === 'models_missing') {
       setMissing({ models: r.failed_models, reason: 'These models could not be downloaded.' })
     } else if (r.status === 'failed') {
@@ -125,6 +129,12 @@ export default function StepRun({ workflow, onBack, onChanged }) {
     }
     setStarting(true)
     try {
+      // Custom nodes first (ComfyUI refuses the whole workflow without them), then models.
+      const nodes = await api.get(`/api/workflows/${workflow.id}/nodes-check`).catch(() => null)
+      if (nodes?.packs?.length) {
+        setNodesNeeded(nodes.packs)
+        return
+      }
       // Ask for models that cannot be fetched automatically before starting the run.
       const check = await api.get(`/api/workflows/${workflow.id}/models`)
       const need = check.models
@@ -153,6 +163,7 @@ export default function StepRun({ workflow, onBack, onChanged }) {
       }, 4000)
     } catch (e) {
       if (e.code === 'models_missing') setMissing({ models: e.data.models })
+      else if (e.code === 'nodes_missing') setNodesNeeded(e.data.packs)
       else msg.showError(e, { title: 'Cannot start the run' })
     } finally {
       setStarting(false)
@@ -229,6 +240,10 @@ export default function StepRun({ workflow, onBack, onChanged }) {
         </div>
       )}
 
+      {nodesNeeded && (
+        <CustomNodesModal packs={nodesNeeded} onClose={() => setNodesNeeded(null)}
+          onReady={() => { setNodesNeeded(null); onChanged?.(); setTimeout(() => startRef.current?.(), 300) }} />
+      )}
       {missing && (
         <MissingModelsModal
           resolvePath={`/api/workflows/${workflow.id}/models/resolve`}

@@ -370,6 +370,59 @@ def build(wid: str) -> Workflow:
     return _load_script(_root() / wid / "workflow.py", wid)
 
 
+def reconvert(wid: str, reason: str = "") -> bool:
+    """Converts ``source.json`` again with the current converter and node catalog (keeps a backup of workflow.py).
+
+    Used when a workflow was imported before group nodes/subgraphs were expanded, or before its custom nodes
+    were installed (their widget values can only be mapped exactly once ComfyUI knows the node).
+    """
+    _check_id(wid)
+    folder = _root() / wid
+    source = folder / "source.json"
+    if not source.is_file():
+        return False
+    meta = _read_meta(wid)
+    data = json.loads(source.read_text(encoding="utf-8"))
+    result = convert(data, sanitize_name(wid), meta.get("source_filename", "workflow.json"), comfy.catalog())
+    if (folder / "workflow.py").read_text(encoding="utf-8") == result.script:
+        return False
+    history = folder / "history"
+    history.mkdir(exist_ok=True)
+    shutil.copyfile(folder / "workflow.py", history / f"workflow_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}_before_reconvert.py")
+    _atomic_write(folder / "workflow.py", result.script)
+    _atomic_write(folder / "prompt.json", json.dumps(result.prompt, indent=2))
+    meta.update(node_count=result.node_count, warnings=result.warnings, notes=result.notes,
+                model_hints=result.model_hints or meta.get("model_hints", []), updated_at=_now(),
+                reconverted_at=_now(), reconvert_reason=reason)
+    _write_meta(wid, meta)
+    _prompt_cache.clear()
+    for hint in result.model_hints:
+        cat = hint.get("directory") or "checkpoints"
+        registry.ensure_entry(hint["name"], cat if cat in CATEGORIES else "checkpoints", hint.get("url", ""))
+    return True
+
+
+def needs_expansion(prompt: Dict[str, Any]) -> bool:
+    """True when an old conversion left a group node / subgraph instance in the prompt."""
+    from cb2c_py.tools.subgraphs import group_name
+
+    return any(group_name(n.get("class_type")) is not None or re.fullmatch(r"[0-9a-f]{8}-[0-9a-f-]{27}", str(n.get("class_type")))
+               for n in prompt.values())
+
+
+def migrate_group_nodes() -> List[str]:
+    """Start-up: re-convert workflows imported with group nodes / subgraphs before v1.0.8."""
+    done = []
+    for d in _root().iterdir() if _root().exists() else []:
+        try:
+            if (d / "source.json").is_file() and needs_expansion(json.loads((d / "prompt.json").read_text(encoding="utf-8"))):
+                if reconvert(d.name, "group nodes / subgraphs expanded"):
+                    done.append(d.name)
+        except (OSError, ValueError, WorkflowError):
+            continue
+    return done
+
+
 def _prompt(wid: str) -> Dict[str, Any]:
     path = _root() / wid / "workflow.py"
     key = f"{wid}:{path.stat().st_mtime_ns}"

@@ -13,11 +13,11 @@ import time
 import uuid
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from app.config import get_settings, replace_with_retry
 from app.events import bus
-from app.services import comfy, workflows
+from app.services import comfy, nodepacks, workflows
 from cb2c_py.lib.workflow_runner import ComfyUIError, WorkflowCancelled
 
 MAX_SEED = 2**50
@@ -73,6 +73,20 @@ def _check_run_id(run_id: str) -> str:
     if not re.fullmatch(r"[a-z0-9_]+", run_id or ""):
         raise RunError("Invalid run id.")
     return run_id
+
+
+_MISSING_NODE_RES = (
+    re.compile(r"Node '([^']+)' not found"),
+    re.compile(r"node ([^\s]+) does not exist", re.I),
+    re.compile(r"missing_node_type[^A-Za-z0-9]+([A-Za-z0-9_./>|-]+)"),
+)
+
+
+def _missing_node_types(text: str) -> List[str]:
+    found = []
+    for rx in _MISSING_NODE_RES:
+        found += [m.strip(".") for m in rx.findall(text or "")]
+    return sorted(set(found))
 
 
 class PreviewStore:
@@ -166,10 +180,13 @@ class RunManager:
     # ------------------------------------------------------------ running
     def start(self, workflow_id: str, overrides: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         meta = workflows.get(workflow_id)
+        if workflows.needs_expansion(workflows._prompt(workflow_id)):
+            workflows.reconvert(workflow_id, "group nodes / subgraphs expanded")
+            meta = workflows.get(workflow_id)
         rows = workflows.detect_models(workflow_id)
         return self._launch(
             {"workflow_id": workflow_id, "workflow_name": meta["name"], "overrides": overrides},
-            rows, meta["node_count"],
+            rows, meta["node_count"], lambda: nodepacks.check_workflow(workflow_id),
         )
 
     def start_template(self, template_id: str, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -182,8 +199,15 @@ class RunManager:
         return self._launch(
             {"workflow_id": None, "template_id": template_id, "template_values": values,
              "workflow_name": t["name"], "task": t["task"], "overrides": {}},
-            rows, 0,
+            rows, 0, lambda: nodepacks.check_prompt(templates.build(template_id, values, placeholder=True).to_prompt()),
         )
+
+    @staticmethod
+    def _node_hints(run: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
+        if not run.get("workflow_id"):
+            return {}
+        source = workflows._root() / run["workflow_id"] / "source.json"
+        return nodepacks.hints_from_source(json.loads(source.read_text(encoding="utf-8"))) if source.is_file() else {}
 
     def _detect(self, run: Dict[str, Any]) -> List[Dict[str, Any]]:
         if run.get("template_id"):
@@ -192,11 +216,18 @@ class RunManager:
             return templates.detect_models(run["template_id"], run.get("template_values") or {}, register=False)
         return workflows.detect_models(run["workflow_id"], register=False)
 
-    def _launch(self, source: Dict[str, Any], rows: List[Dict[str, Any]], node_count: int) -> Dict[str, Any]:
+    def _launch(self, source: Dict[str, Any], rows: List[Dict[str, Any]], node_count: int,
+                node_check: Optional[Callable[[], Dict[str, Any]]] = None) -> Dict[str, Any]:
+        reachable = comfy.status()["reachable"]
+        if reachable and node_check is not None:
+            # custom nodes first: without them ComfyUI rejects the whole workflow
+            packs = node_check().get("packs") or []
+            if packs:
+                raise nodepacks.NodesMissing(packs)
         need_input = [_model_brief(r) for r in rows if r["status"] in ("no_url", "error")]
         if need_input:
             raise ModelsMissing(need_input)
-        if not comfy.status()["reachable"]:
+        if not reachable:
             raise RunError(
                 "ComfyUI is not running. Start it from Settings or with Start-all.bat, then try again."
             )
@@ -446,6 +477,13 @@ class RunManager:
             run["status"] = "failed"
             run["error"] = e.args[0] if e.args else str(e)
             run["error_details"] = e.details
+            missing = _missing_node_types(" ".join([run["error"] or ""] + list(e.details or [])))
+            if missing:  # ComfyUI refused unknown node types: offer to install their packages
+                try:
+                    run["missing_nodes"] = nodepacks.resolve_packs(missing, self._node_hints(run))
+                    run["error_code"] = "nodes_missing"
+                except Exception:  # noqa: BLE001 - keep the plain error
+                    pass
         except (workflows.WorkflowError, RunError, ValueError) as e:
             run["status"] = "failed"
             run["error"] = str(e)

@@ -4,6 +4,7 @@ import Icon from '../components/Icon.jsx'
 import { ModelStatus, PageHeader, RunStatus, Spinner } from '../components/Common.jsx'
 import RunProgress, { useRunTracker } from '../components/RunProgress.jsx'
 import MissingModelsModal from '../components/MissingModelsModal.jsx'
+import CustomNodesModal from '../components/CustomNodes.jsx'
 import UploadModal from '../components/UploadModal.jsx'
 import { Thumb, outputsToItems, usePreview } from '../components/PreviewModals.jsx'
 import { api } from '../api.js'
@@ -105,8 +106,10 @@ export default function Generate() {
   const [checking, setChecking] = useState(false)
   const [starting, setStarting] = useState(false)
   const [missing, setMissing] = useState(null)
+  const [nodesNeeded, setNodesNeeded] = useState(null)
   const [recent, setRecent] = useState([])
   const uploadRef = useRef(null)
+  const generateRef = useRef(null)
 
   const task = params.get('task') || 'text_to_image'
   const list = useMemo(() => (templates || []).filter((t) => t.task === task), [templates, task])
@@ -170,6 +173,8 @@ export default function Generate() {
       const items = outputsToItems(r)
       if (items.length) openPreview(items, 0)
       else msg.showWarning(r.error || 'The run finished without an image or video.', { title: 'No previewable output' })
+    } else if (r.status === 'failed' && r.error_code === 'nodes_missing' && r.missing_nodes?.length) {
+      setNodesNeeded(r.missing_nodes)
     } else if (r.status === 'failed' && r.error_code === 'models_missing') {
       setMissing({ models: r.failed_models, reason: 'These models could not be downloaded.' })
     } else if (r.status === 'failed') {
@@ -198,6 +203,12 @@ export default function Generate() {
     }
     setStarting(true)
     try {
+      // custom nodes first: ComfyUI refuses the whole workflow without them
+      const nodes = await api.post(`/api/templates/${template.id}/nodes-check`, { values: send }).catch(() => null)
+      if (nodes?.packs?.length) {
+        setNodesNeeded(nodes.packs)
+        return
+      }
       const rows = await checkModels()
       const need = (rows || []).filter((m) => m.status === 'no_url' || m.status === 'error')
         .map((m) => ({ name: m.name, category: m.category, url: m.url, status: m.status, error: m.job?.error || '', used_by: m.used_by }))
@@ -209,11 +220,14 @@ export default function Generate() {
       track(r)
     } catch (e) {
       if (e.code === 'models_missing') setMissing({ models: e.data.models })
+      else if (e.code === 'nodes_missing') setNodesNeeded(e.data.packs)
       else msg.showError(e, { title: 'Cannot start' })
     } finally {
       setStarting(false)
     }
   }
+  generateRef.current = generate
+
 
   const cancel = async () => {
     try { await api.post(`/api/runs/${run.id}/cancel`) } catch (e) { msg.showError(e) }
@@ -402,6 +416,10 @@ export default function Generate() {
         </div>
       )}
 
+      {nodesNeeded && template && (
+        <CustomNodesModal packs={nodesNeeded} onClose={() => setNodesNeeded(null)}
+          onReady={() => { setNodesNeeded(null); setTimeout(() => generateRef.current?.(), 300) }} />
+      )}
       {missing && template && (
         <MissingModelsModal
           resolvePath={`/api/templates/${template.id}/models/resolve`}

@@ -168,6 +168,20 @@ def start() -> Dict[str, Any]:
     return {"started": True, "message": "ComfyUI is starting. It can take a minute the first time.", "pid": _process.pid}
 
 
+def stop() -> bool:
+    """Stops ComfyUI if ComfyFlow started it (Start-all.bat's window is handled by the caller)."""
+    global _process
+    if _process is not None and _process.poll() is None:
+        _process.terminate()
+        try:
+            _process.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            _process.kill()
+        _process = None
+        return True
+    return False
+
+
 def log_path() -> Path:
     return PROJECT_ROOT / "logs" / "comfyui.log"
 

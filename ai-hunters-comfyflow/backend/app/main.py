@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.7
+# AI Hunters ComfyFlow v1.0.8
 """FastAPI application for AI Hunters ComfyFlow."""
 import asyncio
 from contextlib import asynccontextmanager
@@ -10,13 +10,13 @@ from fastapi.responses import JSONResponse
 from app import APP_NAME, APP_VERSION
 from app.config import get_settings
 from app.events import bus
-from app.routers import system, models, workflows, runs, templates
+from app.routers import system, models, workflows, runs, templates, nodepacks
 from app.services.registry import registry
 from app.services import workflows as workflows_service
 
 
 def _migrate_parallel_downloads(settings) -> None:
-    """v1.0.7: models download one at a time by default. Moves the old default (2) to 1 once."""
+    """v1.0.6: models download one at a time by default. Moves the old default (2) to 1 once."""
     marker = settings.data_dir / ".downloads_one_by_one"
     if marker.exists():
         return
@@ -40,6 +40,12 @@ async def lifespan(_: FastAPI):
         (settings.data_dir / sub).mkdir(parents=True, exist_ok=True)
     registry.load()
     _migrate_parallel_downloads(settings)
+    try:
+        migrated = workflows_service.migrate_group_nodes()
+        if migrated:
+            print(f"Re-converted workflows with group nodes / subgraphs: {', '.join(migrated)}")
+    except Exception as e:  # noqa: BLE001
+        print(f"Group node migration skipped: {e}")
     try:
         workflows_service.seed_samples()
     except Exception as e:  # noqa: BLE001 - samples are optional
@@ -67,5 +73,5 @@ def health():
     return {"status": "ok", "app": APP_NAME, "version": APP_VERSION}
 
 
-for r in (system.router, models.router, workflows.router, workflows.samples_router, templates.router, runs.router):
+for r in (system.router, models.router, workflows.router, workflows.samples_router, templates.router, runs.router, nodepacks.router):
     app.include_router(r)

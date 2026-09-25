@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.7
+# AI Hunters ComfyFlow v1.0.8
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -129,6 +129,21 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
        updated, and this and every later run downloads the model automatically. Local files are hard-linked
        (same drive, no extra space) or copied into the right ComfyUI models folder;
      * results open automatically in the **Image preview** or **Video preview** modal with **Download** / **Download all**.
+* **Custom nodes (auto-install)** – before a run, ComfyFlow compares the node types of the workflow / template with
+  what ComfyUI has. Missing ones open **“Custom nodes needed for this workflow”** (the wizard's *Models* step lists
+  them too). The package for each node type is found in this order: what you entered before (`data\nodepacks.json`),
+  the workflow itself (ComfyUI saves `aux_id` / `cnr_id` on every node), **ComfyUI-Manager's node list**
+  (`extension-node-map.json`; when several packages list the same node, the one in `config\custom-nodes.txt` or with
+  the most GitHub stars wins, the others are offered as alternatives), then the **Comfy Registry**. Unknown ones get
+  a field for the GitHub URL. **Install all & restart ComfyUI** runs `git clone` into `ComfyUI\custom_nodes`,
+  `pip install -r requirements.txt` (and `install.py`) with ComfyUI's Python, adds the URL to
+  `config\custom-nodes.txt` (so Setup.bat keeps it), restarts ComfyUI (through ComfyUI-Manager, or by restarting the
+  process), refreshes the node catalog and **starts the run again**. If ComfyUI itself reports “Node 'X' not found”,
+  the same dialog opens.
+* **Group nodes & subgraphs** – workflows that use ComfyUI *group nodes* (`workflow>NAME` / `workflow/NAME`) or the
+  newer *subgraphs* are expanded into their inner nodes when they are converted, exactly like ComfyUI's UI does before
+  queueing (inner nodes get ids like `28:3`). Workflows imported with an older version are re-converted automatically
+  (the previous `workflow.py` is kept in `history\`).
 * **Models** – grid (5 per page) of all models: edit name, download URL (or local file path), category and save
   location; add, delete, download, cancel. Downloads resume and run in the background, **one model at a time**
   by default (the others show *Waiting in the queue* and start by themselves) – the most reliable way to fetch
@@ -191,14 +206,15 @@ ai-hunters-comfyflow/
 `GET /api/samples` · `POST /api/samples/open` ·
 `GET /api/templates` · `POST /api/templates/upload` · `DELETE /api/templates/{id}` ·
 `POST /api/templates/{id}/models|models/resolve|models/download-missing|generate` · `GET /api/templates/sample-images[/{name}]` ·
-`POST|GET /api/runs` · `GET|DELETE /api/runs/{id}` · `POST /api/runs/{id}/cancel` · `GET /api/runs/{id}/graph|preview` · `GET /api/comfyui/log|stats` · `POST /api/comfyui/clear-queue` ·
+`POST|GET /api/runs` · `GET|DELETE /api/runs/{id}` · `POST /api/runs/{id}/cancel` · `GET /api/runs/{id}/graph|preview` · `GET /api/comfyui/log|stats` · `POST /api/comfyui/clear-queue` · `GET|POST /api/comfyui/restart` ·
+`GET /api/workflows/{id}/nodes-check` · `POST /api/templates/{id}/nodes-check` · `POST /api/nodepacks/install` · `GET /api/nodepacks/jobs` ·
 `GET /api/runs/{id}/files/{filename}[?download=1]` · `GET /api/runs/{id}/zip` · `POST|GET /api/uploads`
 
 ## Development
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 66 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 77 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 
@@ -212,7 +228,7 @@ cd backend
   (`<model>.part`, shown as “… already downloaded”) and only stop after 6 attempts in a row without progress;
   press **Download** to continue from the same point. Permanent errors (401/403/404, a web page instead of a file)
   are not retried.
-* **Several downloads at once keep dropping** – since v1.0.7 models download one by one (an existing `.env` with the
+* **Several downloads at once keep dropping** – since v1.0.6 models download one by one (an existing `.env` with the
   old value 2 is switched to 1 once on start). Keep *Downloads at the same time* at 1 for big models.
 * **“The workflow finished but produced no output files” although it has a Save node** – fixed in v1.0.7 (ComfyUI
   reports success a moment before its history is stored; ComfyFlow now waits for it and also keeps the files ComfyUI
@@ -232,6 +248,11 @@ cd backend
   add it to its command line. Node states and timings work without it.
 * **A download fails with 401/403** – the model is gated: add a Hugging Face token in Settings (and accept the
   licence on the model page) or a Civitai key.
+* **“Node 'workflow/NAME' not found”** – that is a ComfyUI *group node*, not a missing package; since v1.0.8 it is
+  expanded automatically (open the workflow again or just run it).
+* **A custom node install fails** – open *Show install log* in the dialog. Common causes: no internet / GitHub blocked,
+  a package that needs a C++ compiler or a specific CUDA build (install it by hand following its README), or a folder
+  of the same name already in `ComfyUI\custom_nodes` that is not a git checkout (rename it and retry).
 * **A node shows as GenericNode / widget values look wrong** – install the custom node (add it to
   `config\custom-nodes.txt`, re-run Setup.bat), start ComfyUI, click *Sync nodes from ComfyUI*, re-import the workflow.
 * **Port already in use** – change the port in `.env`, then `Stop-all.bat` and `Start-all.bat`.
