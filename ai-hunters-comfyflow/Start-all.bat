@@ -1,8 +1,11 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title AI Hunters ComfyFlow v1.0.0 - Start
+title AI Hunters ComfyFlow v1.0.1 - Start
 cd /d "%~dp0"
 set "ROOT=%~dp0"
+rem Portable tools downloaded by Setup.bat take precedence
+if exist "%ROOT%tools\node\node.exe" set "PATH=%ROOT%tools\node;%PATH%"
+if exist "%ROOT%tools\git\cmd\git.exe" set "PATH=%ROOT%tools\git\cmd;%PATH%"
 
 if not exist ".env" (
   echo [ERROR] .env not found. Run Setup.bat first.
@@ -14,7 +17,7 @@ if not exist "backend\.venv\Scripts\python.exe" goto :need_setup
 if not exist "frontend\node_modules" goto :need_setup
 
 echo.
-echo  AI Hunters ComfyFlow v1.0.0
+echo  AI Hunters ComfyFlow v1.0.1
 echo  ----------------------------------------------
 
 rem ---------------------------------------------------------------- ComfyUI

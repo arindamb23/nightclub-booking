@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.0
+# AI Hunters ComfyFlow v1.0.1
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -22,19 +22,23 @@ FastAPI backend + React (Vite) frontend on Windows 11. No Docker.
 
 ## Quick start (Windows 11)
 
-Prerequisites (install once, then open a new terminal):
+Nothing needs to be installed beforehand. `Setup.bat` checks for each tool and downloads whatever is missing:
 
-```
-winget install -e --id Python.Python.3.12
-winget install -e --id Git.Git
-winget install -e --id OpenJS.NodeJS.LTS
-```
+| Tool | If missing, Setup.bat… | Admin rights |
+|---|---|---|
+| Python 3.10–3.13 | installs Python 3.12.8 silently into `tools\python` (per-user) | not needed |
+| Git | downloads portable MinGit into `tools\git` | not needed |
+| Node.js | downloads portable Node.js 22 LTS into `tools\node` | not needed |
+| Visual C++ runtime (for PyTorch) | downloads and installs `vc_redist.x64.exe` | Windows asks once |
+
+Tools already installed on the PC are used as they are. The portable tools in `tools\` are only used by ComfyFlow
+(Start-all.bat adds them to its own PATH); nothing is added to the system PATH. Delete `tools\` to remove them.
 
 Then, in the project folder:
 
 | Step | Command | What it does |
 |---|---|---|
-| 1 | `Setup.bat` | Creates `.env`, `backend\.venv`, installs Python + npm packages, **installs ComfyUI** into `comfyui\` with its own venv, PyTorch (CUDA 12.8 when an NVIDIA GPU is found, otherwise CPU + `--cpu`) and the custom nodes from `config\custom-nodes.txt`. Safe to re-run. |
+| 1 | `Setup.bat` | Downloads missing tools (above), creates `.env`, `backend\.venv`, installs Python + npm packages, **installs ComfyUI** into `comfyui\` with its own venv, PyTorch (CUDA 12.8 when an NVIDIA GPU is found, otherwise CPU + `--cpu`) and the custom nodes from `config\custom-nodes.txt`. Safe to re-run. |
 | 2 | `Start-all.bat` | Starts ComfyUI (8188), backend (3015) and frontend (5091) in minimised windows and opens http://localhost:5091 |
 | 3 | `Stop-all.bat` | Stops all three (use `Stop-all.bat keep-comfyui` to leave ComfyUI running) |
 
@@ -77,6 +81,7 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
 ```
 ai-hunters-comfyflow/
 ├─ Setup.bat · Start-all.bat · Stop-all.bat · .env.example
+├─ tools/                           portable Python/Git/Node downloaded by Setup.bat (only if missing)
 ├─ config/custom-nodes.txt          ComfyUI custom nodes installed by Setup.bat
 ├─ scripts/setup_comfyui.py         ComfyUI + PyTorch + custom-node installer
 ├─ scripts/prestart.py              registers a custom MODELS_DIR with ComfyUI
@@ -115,6 +120,8 @@ cd backend
 
 ## Troubleshooting
 
+* **A download in Setup.bat fails** – check the internet connection / company proxy and run Setup.bat again;
+  finished steps are skipped.
 * **“ComfyUI not installed / offline”** – run `Setup.bat`, then `Start-all.bat`. The first ComfyUI start takes a minute.
 * **A download fails with 401/403** – the model is gated: add a Hugging Face token in Settings (and accept the
   licence on the model page) or a Civitai key.
