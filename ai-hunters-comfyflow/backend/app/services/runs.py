@@ -1,0 +1,231 @@
+"""Workflow runs: execute on ComfyUI in a worker thread and keep results on disk."""
+from __future__ import annotations
+
+import datetime as dt
+import io
+import json
+import random
+import re
+import shutil
+import threading
+import time
+import uuid
+import zipfile
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from app.config import get_settings
+from app.events import bus
+from app.services import comfy, workflows
+from cb2c_py.lib.workflow_runner import ComfyUIError, WorkflowCancelled
+
+MAX_SEED = 2**50
+
+
+class RunError(ValueError):
+    pass
+
+
+def _runs_dir() -> Path:
+    p = get_settings().data_dir / "runs"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def outputs_dir(run_id: str) -> Path:
+    return get_settings().data_dir / "outputs" / run_id
+
+
+def uploads_dir() -> Path:
+    p = get_settings().data_dir / "uploads"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _check_run_id(run_id: str) -> str:
+    if not re.fullmatch(r"[a-z0-9_]+", run_id or ""):
+        raise RunError("Invalid run id.")
+    return run_id
+
+
+class RunManager:
+    def __init__(self) -> None:
+        self._cancel: Dict[str, threading.Event] = {}
+        self._lock = threading.Lock()
+
+    # ------------------------------------------------------------ storage
+    def _path(self, run_id: str) -> Path:
+        return _runs_dir() / f"{_check_run_id(run_id)}.json"
+
+    def _save(self, run: Dict[str, Any]) -> None:
+        self._path(run["id"]).write_text(json.dumps(run, indent=2), encoding="utf-8")
+
+    def get(self, run_id: str) -> Dict[str, Any]:
+        p = self._path(run_id)
+        if not p.exists():
+            raise RunError(f"Run '{run_id}' not found.")
+        return json.loads(p.read_text(encoding="utf-8"))
+
+    def list(self, workflow_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        runs = []
+        for p in _runs_dir().glob("*.json"):
+            try:
+                r = json.loads(p.read_text(encoding="utf-8"))
+            except ValueError:
+                continue
+            if workflow_id and r.get("workflow_id") != workflow_id:
+                continue
+            runs.append(r)
+        runs.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+        return runs
+
+    def delete(self, run_id: str) -> None:
+        run = self.get(run_id)
+        if run["status"] in ("queued", "running"):
+            raise RunError("Cancel the run before deleting it.")
+        shutil.rmtree(outputs_dir(run_id), ignore_errors=True)
+        self._path(run_id).unlink(missing_ok=True)
+
+    def file_path(self, run_id: str, filename: str) -> Path:
+        run = self.get(run_id)
+        names = {o["filename"] for o in run.get("outputs", [])}
+        if filename not in names:
+            raise RunError("File not found in this run.")
+        return outputs_dir(run_id) / filename
+
+    def zip_bytes(self, run_id: str) -> bytes:
+        run = self.get(run_id)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for o in run.get("outputs", []):
+                p = outputs_dir(run_id) / o["filename"]
+                if p.exists():
+                    z.write(p, o["filename"])
+        return buf.getvalue()
+
+    # ------------------------------------------------------------ running
+    def start(self, workflow_id: str, overrides: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        meta = workflows.get(workflow_id)
+        missing = [m["name"] for m in workflows.detect_models(workflow_id) if m["status"] != "ready"]
+        if missing:
+            raise RunError("These models are not downloaded yet: " + ", ".join(missing))
+        if not comfy.status()["reachable"]:
+            raise RunError(
+                "ComfyUI is not running. Start it from Settings or with Start-all.bat, then try again."
+            )
+        run_id = dt.datetime.now().strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
+        run = {
+            "id": run_id,
+            "workflow_id": workflow_id,
+            "workflow_name": meta["name"],
+            "status": "queued",
+            "created_at": dt.datetime.now().isoformat(timespec="seconds"),
+            "finished_at": None,
+            "duration": None,
+            "overrides": overrides,
+            "progress": {"node": None, "class_type": None, "value": 0, "max": 0, "done": 0, "total": meta["node_count"]},
+            "outputs": [],
+            "error": None,
+            "error_details": [],
+        }
+        self._save(run)
+        cancel = threading.Event()
+        with self._lock:
+            self._cancel[run_id] = cancel
+        threading.Thread(target=self._execute, args=(run, cancel), daemon=True, name=f"run-{run_id}").start()
+        self._publish(run)
+        return run
+
+    def cancel(self, run_id: str) -> Dict[str, Any]:
+        ev = self._cancel.get(run_id)
+        if ev is None:
+            raise RunError("This run is not active.")
+        ev.set()
+        return self.get(run_id)
+
+    @staticmethod
+    def _publish(run: Dict[str, Any]) -> None:
+        bus.publish({"type": "run", "run": {k: v for k, v in run.items() if k != "overrides"}})
+
+    def _apply_overrides(self, wf, overrides: Dict[str, Dict[str, Any]], runner) -> None:
+        for node_id, values in (overrides or {}).items():
+            if str(node_id) not in wf.nodes:
+                continue
+            node = wf.get_node(node_id)
+            for input_name, value in (values or {}).items():
+                if isinstance(value, dict) and value.get("upload"):
+                    local = uploads_dir() / Path(value["upload"]).name
+                    if not local.exists():
+                        raise RunError(f"Uploaded file '{value['upload']}' is missing; upload it again.")
+                    value = runner.upload_file(str(local))
+                elif isinstance(value, dict) and value.get("random_seed"):
+                    value = random.randint(0, MAX_SEED)
+                node.set_input(input_name, value)
+
+    def _execute(self, run: Dict[str, Any], cancel: threading.Event) -> None:
+        started = time.time()
+        runner = comfy.runner()
+        executed: set = set()
+
+        def on_message(message: Dict[str, Any]) -> None:
+            mtype = message.get("type")
+            data = message.get("data") or {}
+            prog = run["progress"]
+            if mtype == "executing" and data.get("node") is not None:
+                executed.add(str(data["node"]))
+                prog["node"] = str(data["node"])
+                node = wf.nodes.get(str(data["node"]))
+                prog["class_type"] = node._original_name if node is not None else None
+                prog["value"], prog["max"] = 0, 0
+            elif mtype == "execution_cached":
+                executed.update(str(n) for n in data.get("nodes") or [])
+            elif mtype == "progress":
+                prog["value"], prog["max"] = data.get("value", 0), data.get("max", 0)
+            else:
+                return
+            prog["done"] = min(len(executed), prog["total"])
+            self._publish(run)
+
+        try:
+            wf = workflows.build(run["workflow_id"])
+            run["progress"]["total"] = len(wf.nodes)
+            self._apply_overrides(wf, run["overrides"], runner)
+            run["status"] = "running"
+            self._save(run)
+            self._publish(run)
+            outputs = runner.run_workflow(
+                wf,
+                progress_callback=on_message,
+                output_dir=str(outputs_dir(run["id"])),
+                cancel_event=cancel,
+            )
+            run["outputs"] = [
+                {k: o[k] for k in ("filename", "kind", "size", "node_id", "type")} for o in outputs
+            ]
+            run["status"] = "succeeded"
+            run["progress"]["done"] = run["progress"]["total"]
+            if not outputs:
+                run["error"] = "The workflow finished but produced no output files (add a Save/Preview node)."
+        except WorkflowCancelled:
+            run["status"] = "cancelled"
+        except ComfyUIError as e:
+            run["status"] = "failed"
+            run["error"] = e.args[0] if e.args else str(e)
+            run["error_details"] = e.details
+        except (workflows.WorkflowError, RunError) as e:
+            run["status"] = "failed"
+            run["error"] = str(e)
+        except Exception as e:  # noqa: BLE001 - never leave a run hanging
+            run["status"] = "failed"
+            run["error"] = f"{type(e).__name__}: {e}"
+        finally:
+            run["finished_at"] = dt.datetime.now().isoformat(timespec="seconds")
+            run["duration"] = round(time.time() - started, 1)
+            self._save(run)
+            self._publish(run)
+            workflows.record_run(run["workflow_id"], run["id"], run["status"])
+            with self._lock:
+                self._cancel.pop(run["id"], None)
+
+
+runs = RunManager()

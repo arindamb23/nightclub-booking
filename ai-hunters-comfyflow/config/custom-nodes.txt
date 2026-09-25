@@ -1,0 +1,16 @@
+# ComfyUI custom nodes installed by Setup.bat (one git URL per line, # = disabled).
+# After adding a node: run Setup.bat again, start ComfyUI, then Settings > "Sync nodes from ComfyUI".
+https://github.com/Comfy-Org/ComfyUI-Manager
+https://github.com/city96/ComfyUI-GGUF
+https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite
+https://github.com/kijai/ComfyUI-KJNodes
+https://github.com/rgthree/rgthree-comfy
+https://github.com/cubiq/ComfyUI_essentials
+
+# Optional (heavier / GPU specific) - remove the # to install:
+# https://github.com/kijai/ComfyUI-WanVideoWrapper
+# https://github.com/mit-han-lab/ComfyUI-nunchaku
+# https://github.com/Fannovel16/comfyui_controlnet_aux
+# https://github.com/kijai/ComfyUI-DepthAnythingV2
+# https://github.com/pollockjj/ComfyUI-MultiGPU
+# https://github.com/Lightricks/ComfyUI-LTXVideo

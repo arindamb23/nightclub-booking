@@ -1,0 +1,59 @@
+/* AI Hunters ComfyFlow - light theme (the only theme).
+   Warm ivory surfaces, near-black text and a terracotta accent, in the spirit of Claude's UI. */
+:root {
+  color-scheme: light;
+
+  /* surfaces */
+  --bg: #faf9f5;
+  --bg-sidebar: #f3f1ea;
+  --surface: #ffffff;
+  --surface-2: #f7f6f1;
+  --surface-hover: #f0eee6;
+  --overlay: rgba(31, 30, 29, 0.42);
+
+  /* lines */
+  --border: #e6e3d9;
+  --border-strong: #d4d0c3;
+  --focus-ring: rgba(201, 100, 66, 0.35);
+
+  /* text */
+  --text: #1f1e1d;
+  --text-2: #4d4c48;
+  --muted: #83827d;
+  --placeholder: #a8a69f;
+
+  /* accent (terracotta) */
+  --accent: #c96442;
+  --accent-hover: #b1532f;
+  --accent-active: #9c4829;
+  --accent-soft: #f7e9e2;
+  --accent-soft-2: #fbf3ef;
+  --on-accent: #ffffff;
+
+  /* status */
+  --success: #4e7d4a;
+  --success-soft: #e8f0e4;
+  --warning: #9a6310;
+  --warning-soft: #fbf0db;
+  --danger: #b3372e;
+  --danger-soft: #f9e5e2;
+  --info: #3f6b98;
+  --info-soft: #e5edf6;
+
+  /* type */
+  --font-serif: "Tiempos Headline", "Copernicus", "Iowan Old Style", "Palatino Linotype", Georgia, "Times New Roman", serif;
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* shape + depth */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --shadow-sm: 0 1px 2px rgba(31, 30, 29, 0.05);
+  --shadow: 0 1px 3px rgba(31, 30, 29, 0.06), 0 4px 14px rgba(31, 30, 29, 0.05);
+  --shadow-lg: 0 10px 40px rgba(31, 30, 29, 0.16), 0 2px 8px rgba(31, 30, 29, 0.06);
+
+  --sidebar-w: 248px;
+  --topbar-h: 60px;
+}

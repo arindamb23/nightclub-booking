@@ -1,0 +1,107 @@
+{
+  "version": 2,
+  "models": [
+    {
+      "name": "v1-5-pruned-emaonly-fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/stable-diffusion-v1-5-archive/resolve/main/v1-5-pruned-emaonly-fp16.safetensors?download=true",
+      "category": "checkpoints",
+      "save_dir": ""
+    },
+    {
+      "name": "v1-5-pruned-emaonly.safetensors",
+      "url": "https://huggingface.co/runwayml/stable-diffusion-v1-5/resolve/main/v1-5-pruned-emaonly.safetensors",
+      "category": "checkpoints",
+      "save_dir": ""
+    },
+    {
+      "name": "RealVisXL_V5.1.safetensors",
+      "url": "https://civitai.com/api/download/models/501240?type=Model&format=SafeTensor&size=pruned&fp=fp16",
+      "category": "checkpoints",
+      "save_dir": ""
+    },
+    {
+      "name": "wan2.1-t2v-14b-Q4_K_M.gguf",
+      "url": "https://huggingface.co/city96/Wan2.1-T2V-14B-gguf/resolve/main/wan2.1-t2v-14b-Q4_K_M.gguf",
+      "category": "unet",
+      "save_dir": ""
+    },
+    {
+      "name": "wan2.1-i2v-14b-720p-Q4_K_M.gguf",
+      "url": "https://huggingface.co/city96/Wan2.1-I2V-14B-720P-gguf/resolve/main/wan2.1-i2v-14b-720p-Q4_K_M.gguf",
+      "category": "unet",
+      "save_dir": ""
+    },
+    {
+      "name": "wan2.1-i2v-14b-480p-Q4_K_M.gguf",
+      "url": "https://huggingface.co/city96/Wan2.1-I2V-14B-480P-gguf/resolve/main/wan2.1-i2v-14b-480p-Q4_K_M.gguf",
+      "category": "unet",
+      "save_dir": ""
+    },
+    {
+      "name": "wan_2.1_vae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors",
+      "category": "vae",
+      "save_dir": ""
+    },
+    {
+      "name": "ae.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Lumina_Image_2.0_Repackaged/resolve/main/split_files/vae/ae.safetensors",
+      "category": "vae",
+      "save_dir": ""
+    },
+    {
+      "name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "category": "text_encoders",
+      "save_dir": ""
+    },
+    {
+      "name": "t5xxl_fp8_e4m3fn_scaled.safetensors",
+      "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn_scaled.safetensors",
+      "category": "text_encoders",
+      "save_dir": ""
+    },
+    {
+      "name": "clip_l.safetensors",
+      "url": "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors",
+      "category": "text_encoders",
+      "save_dir": ""
+    },
+    {
+      "name": "qwen_2.5_vl_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Omnigen2_ComfyUI_repackaged/resolve/main/split_files/text_encoders/qwen_2.5_vl_fp16.safetensors",
+      "category": "text_encoders",
+      "save_dir": ""
+    },
+    {
+      "name": "clip_vision_h.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors?download=true",
+      "category": "clip_vision",
+      "save_dir": ""
+    },
+    {
+      "name": "flux1-dev-kontext_fp8_scaled.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/flux1-kontext-dev_ComfyUI/resolve/main/split_files/diffusion_models/flux1-dev-kontext_fp8_scaled.safetensors",
+      "category": "diffusion_models",
+      "save_dir": ""
+    },
+    {
+      "name": "svdq-fp4_r32-flux.1-kontext-dev.safetensors",
+      "url": "https://huggingface.co/mit-han-lab/nunchaku-flux.1-kontext-dev/resolve/main/svdq-fp4_r32-flux.1-kontext-dev.safetensors",
+      "category": "diffusion_models",
+      "save_dir": ""
+    },
+    {
+      "name": "svdq-int4_r32-flux.1-kontext-dev.safetensors",
+      "url": "https://huggingface.co/mit-han-lab/nunchaku-flux.1-kontext-dev/resolve/main/svdq-int4_r32-flux.1-kontext-dev.safetensors",
+      "category": "diffusion_models",
+      "save_dir": ""
+    },
+    {
+      "name": "omnigen2_fp16.safetensors",
+      "url": "https://huggingface.co/Comfy-Org/Omnigen2_ComfyUI_repackaged/resolve/main/split_files/diffusion_models/omnigen2_fp16.safetensors",
+      "category": "diffusion_models",
+      "save_dir": ""
+    }
+  ]
+}

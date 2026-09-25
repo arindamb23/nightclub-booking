@@ -1,0 +1,105 @@
+"""Runs, results, previews/downloads and input uploads."""
+import re
+import uuid
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel
+
+from app.services.runs import runs, RunError, uploads_dir
+from app.services.workflows import WorkflowError
+
+router = APIRouter(prefix="/api", tags=["runs"])
+
+UPLOAD_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".mp4", ".webm", ".mov", ".mkv", ".avi"}
+
+
+class RunIn(BaseModel):
+    workflow_id: str
+    overrides: Dict[str, Dict[str, Any]] = {}
+
+
+@router.post("/runs")
+def start_run(body: RunIn):
+    try:
+        return runs.start(body.workflow_id, body.overrides)
+    except (RunError, WorkflowError) as e:
+        raise HTTPException(409, str(e))
+
+
+@router.get("/runs")
+def list_runs(workflow_id: Optional[str] = None):
+    return {"runs": runs.list(workflow_id)}
+
+
+@router.get("/runs/{run_id}")
+def get_run(run_id: str):
+    try:
+        return runs.get(run_id)
+    except RunError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: str):
+    try:
+        return runs.cancel(run_id)
+    except RunError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: str):
+    try:
+        runs.delete(run_id)
+    except RunError as e:
+        raise HTTPException(409, str(e))
+    return {"deleted": run_id}
+
+
+@router.get("/runs/{run_id}/files/{filename}")
+def run_file(run_id: str, filename: str, download: bool = False):
+    try:
+        path = runs.file_path(run_id, filename)
+    except RunError as e:
+        raise HTTPException(404, str(e))
+    if not path.exists():
+        raise HTTPException(404, "File was removed from disk.")
+    if download:
+        return FileResponse(path, filename=filename)
+    return FileResponse(path)
+
+
+@router.get("/runs/{run_id}/zip")
+def run_zip(run_id: str):
+    try:
+        data = runs.zip_bytes(run_id)
+    except RunError as e:
+        raise HTTPException(404, str(e))
+    return Response(
+        data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="comfyflow_{run_id}.zip"'},
+    )
+
+
+@router.post("/uploads")
+async def upload_input(file: UploadFile = File(...)):
+    name = Path(file.filename or "input.png").name
+    ext = Path(name).suffix.lower()
+    if ext not in UPLOAD_EXTS:
+        raise HTTPException(400, f"Unsupported file type '{ext}'. Use an image or video file.")
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", Path(name).stem)[:60] or "input"
+    stored = f"{safe}_{uuid.uuid4().hex[:6]}{ext}"
+    (uploads_dir() / stored).write_bytes(await file.read())
+    return {"filename": stored, "original": name}
+
+
+@router.get("/uploads/{filename}")
+def get_upload(filename: str):
+    path = uploads_dir() / Path(filename).name
+    if not path.exists():
+        raise HTTPException(404, "Upload not found.")
+    return FileResponse(path)
