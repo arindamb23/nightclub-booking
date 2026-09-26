@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +22,28 @@ PUBLISH_EVERY = 0.5
 
 MAX_STALLED_RETRIES = 6  # attempts in a row without any new bytes before giving up
 RETRY_DELAY_SCALE = 1.0  # tests shrink the back-off
+
+
+REPO_PREFIX = "repo:"
+HF_BASE = os.environ.get("COMFYFLOW_HF_BASE", "https://huggingface.co")  # tests point this at a local server
+
+
+class _Cancelled(Exception):
+    pass
+
+
+def repo_key(repo: str, target: Path) -> str:
+    """Download key of a repository: repo:<target folder>|<owner/name>."""
+    return f"{REPO_PREFIX}{target}|{repo}"
+
+
+def parse_repo_key(key: str):
+    target, _, repo = key[len(REPO_PREFIX):].rpartition("|")
+    return repo, Path(target)
+
+
+def repo_ready(target: Path) -> bool:
+    return target.is_dir() and any(p.is_file() and p.stat().st_size > 0 for p in target.rglob("*"))
 
 
 class DownloadError(RuntimeError):
@@ -58,6 +81,10 @@ class Job:
         self.attempt = 0
         self.cancel = threading.Event()
         self.updated = time.time()
+        self.parent: Optional["Job"] = None  # set for one file of a repository download
+        self.base = 0
+        self.file_note = ""
+        self.repo = ""
 
     def to_dict(self) -> Dict[str, Any]:
         percent = round(self.downloaded * 100 / self.total, 1) if self.total else None
@@ -100,6 +127,8 @@ class Downloader:
         return bool(j and j.status in ("queued", "downloading"))
 
     def start(self, name: str, requested_name: Optional[str] = None) -> Dict[str, Any]:
+        if name.startswith(REPO_PREFIX):
+            return self.start_repo(name)
         entry = registry.get(name)
         if entry is None:
             raise RegistryError(f"Model '{name}' is not in the model list.")
@@ -161,8 +190,92 @@ class Downloader:
         return url, headers
 
     def _publish(self, job: Job) -> None:
+        parent = getattr(job, "parent", None)
+        if parent is not None:  # one file of a repository: report it as progress of the whole repository
+            parent.downloaded = parent.base + job.downloaded
+            parent.speed = job.speed
+            parent.note = job.note or parent.file_note
+            job = parent
         job.updated = time.time()
         bus.publish({"type": "download", **job.to_dict()})
+
+    # ---------------------------------------------------------------- Hugging Face repositories
+    def start_repo(self, key: str) -> Dict[str, Any]:
+        """Downloads a whole Hugging Face repository (models some nodes load by repo id, e.g. a text-encoder LLM)."""
+        repo, target = parse_repo_key(key)
+        with self._lock:
+            current = self._jobs.get(key)
+            if current and current.status in ("queued", "downloading"):
+                return current.to_dict()
+            job = Job(key, target, f"{HF_BASE}/{repo}")
+            job.repo = repo
+            self._jobs[key] = job
+        if repo_ready(target):
+            job.status = "done"
+            self._publish(job)
+            return job.to_dict()
+        ahead = sum(1 for j in self._jobs.values() if j is not job and j.status in ("queued", "downloading"))
+        if ahead >= get_settings().max_parallel_downloads:
+            job.note = f"Waiting in the queue ({ahead} ahead) — models download one at a time"
+        self._publish(job)
+        self._pool().submit(self._run_repo, job)
+        return job.to_dict()
+
+    def _repo_files(self, repo: str) -> list:
+        url, headers = self._prepare_request(f"{HF_BASE}/api/models/{repo}/tree/main?recursive=true")
+        r = requests.get(url, headers=headers, timeout=30)
+        if r.status_code in (401, 403):
+            raise PermanentDownloadError(f"Access denied to {repo} (HTTP {r.status_code}). Add a Hugging Face token in Settings "
+                                         "and accept the model's licence on its page.")
+        if r.status_code == 404:
+            raise PermanentDownloadError(f"Hugging Face repository '{repo}' was not found.")
+        r.raise_for_status()
+        files = []
+        for item in r.json():
+            if item.get("type") == "file":
+                size = (item.get("lfs") or {}).get("size") or item.get("size") or 0
+                files.append({"path": item["path"], "size": int(size)})
+        if not files:
+            raise PermanentDownloadError(f"Repository '{repo}' has no files.")
+        return files
+
+    def _run_repo(self, job: Job) -> None:
+        tmp = job.path.with_name(job.path.name + ".partial")  # the node only checks that the folder exists
+        try:
+            if job.cancel.is_set():
+                raise _Cancelled()
+            job.status = "downloading"
+            job.note = "Listing the repository files…"
+            self._publish(job)
+            files = self._repo_files(job.repo)
+            job.total = sum(f["size"] for f in files)
+            job.base = 0
+            for i, f in enumerate(files, 1):
+                dest = tmp.joinpath(*f["path"].split("/"))
+                if dest.is_file() and (not f["size"] or dest.stat().st_size == f["size"]):
+                    job.base += f["size"]
+                    continue
+                job.file_note = f"File {i}/{len(files)}: {f['path']}"
+                sub = Job(job.name, dest, f"{HF_BASE}/{job.repo}/resolve/main/{f['path']}")
+                sub.cancel = job.cancel
+                sub.parent = job
+                self._run(sub)
+                if sub.status == "cancelled":
+                    raise _Cancelled()
+                if sub.status != "done":
+                    raise PermanentDownloadError(f"{f['path']}: {sub.error}")
+                job.base += dest.stat().st_size
+            if job.path.exists():
+                shutil.rmtree(job.path, ignore_errors=True)
+            replace_with_retry(tmp, job.path)
+            job.status, job.note, job.error = "done", "", ""
+            job.downloaded = job.total = job.base
+        except _Cancelled:
+            job.status, job.note = "cancelled", ""
+        except (requests.RequestException, OSError, DownloadError) as e:
+            job.status, job.note = "error", ""
+            job.error = str(e) if isinstance(e, DownloadError) else f"Could not download {job.repo}: {_short(e)}"
+        self._publish(job)
 
     def _run(self, job: Job) -> None:
         """Downloads with automatic resume: dropped connections / timeouts retry from the bytes on disk."""

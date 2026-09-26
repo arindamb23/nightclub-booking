@@ -276,7 +276,7 @@ def get(wid: str) -> Dict[str, Any]:
     meta = _read_meta(wid)
     models = detect_models(wid, register=False)
     meta["models_total"] = len(models)
-    meta["models_ready"] = sum(1 for m in models if m["status"] == "ready")
+    meta["models_ready"] = sum(1 for m in models if m["status"] in ("ready", "node"))
     return meta
 
 
@@ -473,6 +473,76 @@ def _category_for(class_type: str, input_name: str, value: str, hints: Dict[str,
     return _heuristic_category(class_type, input_name)
 
 
+# ---- models a node downloads itself from a Hugging Face repository (value = "owner/name", not a file)
+REPO_ID = re.compile(r"^[A-Za-z0-9][\w.-]*/[\w.-]+$")
+# (class, input) -> folder under ComfyUI/models where the node keeps <repo name> (it only checks that folder exists)
+REPO_FOLDERS = {
+    ("DownloadAndLoadHyVideoTextEncoder", "llm_model"): "LLM",
+    ("DownloadAndLoadHyVideoTextEncoder", "clip_model"): "clip",
+    ("HyVideoTextEncoderLoader", "llm_model"): "LLM",
+    ("HyVideoTextEncoderLoader", "clip_model"): "clip",
+    ("DownloadAndLoadFlorence2Model", "model"): "LLM",
+    ("DownloadAndLoadCogVideoModel", "model"): "CogVideo",
+    ("DownloadAndLoadMochiModel", "model"): "diffusion_models",
+}
+
+
+def _repo_folder(ctype: str, input_name: str, value: str) -> Optional[str]:
+    """Folder (under ComfyUI/models) of a repo-id input, or None when the value is not a repository."""
+    if not isinstance(value, str) or not REPO_ID.match(value) or value.lower() in ("disabled", "none"):
+        return None
+    last = value.rsplit("/", 1)[-1].lower()
+    if last.endswith(MODEL_EXTS) or re.search(r"\.(json|txt|yaml|png|jpg|mp4)$", last):
+        return None  # a file in a sub-folder, not a repository
+    if (ctype, input_name) in REPO_FOLDERS:
+        return REPO_FOLDERS[(ctype, input_name)]
+    low = input_name.lower()
+    if ctype.startswith("DownloadAndLoad") or "repo" in low:
+        return "LLM" if "llm" in low else "clip" if "clip" in low else ""  # "" = the node's own choice
+    return None
+
+
+def detect_repo_models(prompt: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Hugging Face repositories a node downloads on its first run (e.g. HunyuanVideo's 16 GB llava text encoder).
+
+    Listed with the other models; ComfyFlow downloads them itself (progress, resume, one at a time) into the exact
+    folder the node checks, so the run does not sit silently while the node fetches them."""
+    from app.services.downloader import repo_key, repo_ready
+
+    comfy_models = get_settings().comfyui_dir / "models"
+    found: Dict[str, Dict[str, Any]] = {}
+    for node_id, node in prompt.items():
+        ctype = node.get("class_type", "")
+        title = (node.get("_meta") or {}).get("title") or ctype
+        for input_name, value in (node.get("inputs") or {}).items():
+            folder = _repo_folder(ctype, input_name, value)
+            if folder is None:
+                continue
+            if value in found:
+                found[value]["used_by"].append(f"{title} ({node_id})")
+                continue
+            target = comfy_models / folder / value.rsplit("/", 1)[-1] if folder else None
+            key = repo_key(value, target) if target else ""
+            job = downloader.job(key) if key else None
+            if target is None:
+                status = "node"  # unknown folder: the node downloads it itself on the first run
+            elif repo_ready(target):
+                status = "ready"
+            elif job and job["status"] in ("queued", "downloading", "error"):
+                status = job["status"]
+            else:
+                status = "missing"
+            size = sum(p.stat().st_size for p in target.rglob("*") if p.is_file()) if status == "ready" else 0
+            found[value] = {
+                "name": value, "kind": "repo", "category": folder or "(chosen by the node)", "node_id": node_id,
+                "class_type": ctype, "input": input_name, "used_by": [f"{title} ({node_id})"],
+                "registry_name": key or value, "url": f"https://huggingface.co/{value}", "save_dir": "",
+                "resolved_dir": str(target.parent) if target else "", "path": str(target) if target else "",
+                "size": size, "partial": 0, "status": status, "job": job,
+            }
+    return list(found.values())
+
+
 def _is_model_value(ctype: str, input_name: str, value: str) -> bool:
     """A model file: by extension, by a known loader input, or – for any custom node – because ComfyUI says the
     input's choices are the files of a models folder (whatever the extension)."""
@@ -508,7 +578,7 @@ def detect_models_in_prompt(
         for input_name, value in (node.get("inputs") or {}).items():
             if not isinstance(value, str):
                 continue
-            if not _is_model_value(ctype, input_name, value):
+            if _repo_folder(ctype, input_name, value) is not None or not _is_model_value(ctype, input_name, value):
                 continue
             name = value.replace("\\", "/")
             if name in found:
@@ -556,7 +626,7 @@ def detect_models_in_prompt(
             "status": status,
             "job": job,
         })
-    return rows
+    return rows + detect_repo_models(prompt)
 
 
 def _reconcile_folders(found: Dict[str, Dict[str, Any]]) -> None:
@@ -604,6 +674,10 @@ def resolve_rows(detected: List[Dict[str, Any]], items: List[Dict[str, Any]]) ->
         row = rows.get(name)
         if row is None:
             errors.append(f"{name}: this model is not used by the workflow.")
+            continue
+        if row.get("kind") == "repo":
+            errors.append(f"{name}: this is a Hugging Face repository; it is downloaded as a whole (check the Hugging Face "
+                          "token in Settings if access is denied, then press Retry in the model list).")
             continue
         if not value:
             errors.append(f"{name}: enter a download URL or the path of the model file.")

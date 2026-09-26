@@ -137,7 +137,7 @@ export default function StepModels({ workflow, onBack, onNext, onChanged }) {
 
   if (!rows) return <div className="card card-pad row muted"><Spinner />Detecting models…</div>
 
-  const ready = rows.filter((r) => r.status === 'ready').length
+  const ready = rows.filter((r) => r.status === 'ready' || r.status === 'node').length
   const allReady = ready === rows.length
   const noUrl = rows.filter((r) => r.status === 'no_url').length
   const isEditing = (r) => editing?.key === r.name
@@ -149,6 +149,7 @@ export default function StepModels({ workflow, onBack, onNext, onChanged }) {
       render: (r) => (
         <>
           <div className="cell-main break">{r.name}</div>
+          {r.kind === 'repo' && <div className="cell-sub"><span className="badge badge-info" style={{ height: 18 }}>Hugging Face repository</span>{r.status === 'node' ? ' the node downloads it on its first run' : ' downloaded as a folder'}</div>}
           <div className="cell-sub">Used by {r.used_by.join(', ')}{r.size ? ` · ${formatBytes(r.size)}` : ''}</div>
         </>
       ),
@@ -189,7 +190,7 @@ export default function StepModels({ workflow, onBack, onNext, onChanged }) {
         <div className="actions">
           {(r.status === 'downloading' || r.status === 'queued') && <button className="btn btn-sm" onClick={() => cancel(r)}><Icon name="stop" size={13} />Cancel</button>}
           {(r.status === 'missing' || r.status === 'error') && <button className="btn btn-sm btn-primary" onClick={() => download(r)}><Icon name="download" size={15} />{r.status === 'error' ? 'Retry' : 'Download'}</button>}
-          <button className="btn btn-ghost icon-btn" onClick={() => startEdit(r)} disabled={!!editing} aria-label={`Edit ${r.name}`}><Icon name="edit" size={16} /></button>
+          {r.kind !== 'repo' && <button className="btn btn-ghost icon-btn" onClick={() => startEdit(r)} disabled={!!editing} aria-label={`Edit ${r.name}`}><Icon name="edit" size={16} /></button>}
         </div>
       ),
     },

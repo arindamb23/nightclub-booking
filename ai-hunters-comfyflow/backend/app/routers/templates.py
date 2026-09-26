@@ -22,7 +22,7 @@ def _guard(fn, *args):
 
 
 def _summary(rows):
-    return {"models": rows, "ready": sum(1 for r in rows if r["status"] == "ready"), "total": len(rows)}
+    return {"models": rows, "ready": sum(1 for r in rows if r["status"] in ("ready", "node")), "total": len(rows)}
 
 
 @router.get("")

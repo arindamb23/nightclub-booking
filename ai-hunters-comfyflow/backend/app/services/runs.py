@@ -243,7 +243,7 @@ class RunManager:
             raise RunError(
                 "ComfyUI is not running. Start it from Settings or with Start-all.bat, then try again."
             )
-        pending = [r for r in rows if r["status"] != "ready"]
+        pending = [r for r in rows if r["status"] not in ("ready", "node")]
         for r in pending:
             if r["status"] == "missing":
                 workflows.downloader.start(r["registry_name"], r["name"])
@@ -285,7 +285,7 @@ class RunManager:
             for r in rows:  # restart a download that stopped (e.g. cancelled in the Models page)
                 if r["status"] == "missing":
                     workflows.downloader.start(r["registry_name"], r["name"])
-            ready = sum(1 for r in rows if r["status"] == "ready")
+            ready = sum(1 for r in rows if r["status"] in ("ready", "node"))
             run["progress"]["models"] = {
                 "ready": ready,
                 "total": len(rows),

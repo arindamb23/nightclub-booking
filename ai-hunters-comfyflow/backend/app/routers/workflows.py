@@ -89,7 +89,7 @@ def script(wid: str):
 @router.get("/{wid}/models")
 def models(wid: str):
     rows = _guard(workflows.detect_models, wid)
-    return {"models": rows, "ready": sum(1 for r in rows if r["status"] == "ready"), "total": len(rows)}
+    return {"models": rows, "ready": sum(1 for r in rows if r["status"] in ("ready", "node")), "total": len(rows)}
 
 
 @router.post("/{wid}/models/download-missing")
@@ -110,7 +110,7 @@ class ResolveIn(BaseModel):
 @router.post("/{wid}/models/resolve")
 def resolve_models(wid: str, body: ResolveIn):
     rows = _guard(workflows.resolve_models, wid, [i.model_dump() for i in body.items])
-    return {"models": rows, "ready": sum(1 for r in rows if r["status"] == "ready"), "total": len(rows)}
+    return {"models": rows, "ready": sum(1 for r in rows if r["status"] in ("ready", "node")), "total": len(rows)}
 
 
 @router.get("/{wid}/parameters")

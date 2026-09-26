@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.12
+# AI Hunters ComfyFlow v1.0.13
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -153,6 +153,13 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
   list in the folder ComfyUI reads and the **“Models needed for this run”** dialog asks for its download URL or
   file path, exactly like other missing models; the next run downloads it. When ComfyUI's list for that input is
   empty the folder is a guess you can change in the dialog – your choice is remembered for that loader input.
+* **Models a node downloads itself (Hugging Face repositories)** – some nodes take a repository name instead of a
+  file, e.g. HunyuanVideoWrapper's *DownloadAndLoadHyVideoTextEncoder* (`Kijai/llava-llama-3-8b-text-encoder-tokenizer`,
+  ≈ 16 GB, and `openai/clip-vit-large-patch14`). They are listed with the other models (label *Hugging Face
+  repository*) and ComfyFlow downloads the whole repository itself – progress, resume, one at a time – into the
+  exact folder the node checks (`ComfyUI\models\LLM\<name>`, `ComfyUI\models\clip\<name>`), via a `.partial` folder
+  so the node never sees half a download. Repositories of nodes whose folder is not known are listed as
+  *Downloaded by the node* and do not block the run.
 * **Model folders come from ComfyUI** – the folder a model must be in is asked from ComfyUI, not guessed from the
   input name: the files a loader input accepts (`/object_info`) are compared with the files of every models folder
   (`/models/<folder>`), so custom loaders (HunyuanVideoWrapper, WanVideoWrapper, …) get the right folder too. Answers
@@ -232,7 +239,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 84 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 86 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 

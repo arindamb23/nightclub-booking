@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
-title AI Hunters ComfyFlow v1.0.12 - Start
+title AI Hunters ComfyFlow v1.0.13 - Start
 cd /d "%~dp0"
 set "ROOT=%~dp0"
 rem Portable tools downloaded by Setup.bat take precedence
@@ -17,7 +17,7 @@ if not exist "backend\.venv\Scripts\python.exe" goto :need_setup
 if not exist "frontend\node_modules" goto :need_setup
 
 echo.
-echo  AI Hunters ComfyFlow v1.0.12
+echo  AI Hunters ComfyFlow v1.0.13
 echo  ----------------------------------------------
 
 rem ---------------------------------------------------------------- ComfyUI

@@ -29,6 +29,7 @@ const MODEL_STATUS = {
   downloading: ['badge-info', 'Downloading'],
   error: ['badge-danger', 'Failed'],
   cancelled: ['', 'Cancelled'],
+  node: ['', 'Downloaded by the node'],
 }
 
 export function ModelStatus({ status, job, partial }) {
