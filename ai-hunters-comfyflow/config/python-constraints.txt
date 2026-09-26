@@ -1,0 +1,8 @@
+# Version limits for ComfyUI's Python environment (comfyui\venv).
+# Applied by Setup.bat and by every custom-node install ComfyFlow runs (pip -c this file),
+# and installed on their own at the end of Setup so a newer version already present is replaced.
+# Format: pip requirement specifiers, one per line. Remove a line when the node authors have caught up.
+
+# transformers 5.6+ removed CLIPTextModel.text_model; ComfyUI-HunyuanVideoWrapper (and other
+# wrappers built on it) still use it -> "'CLIPTextModel' object has no attribute 'text_model'".
+transformers>=4.49,<5.6

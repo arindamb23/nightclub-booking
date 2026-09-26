@@ -502,6 +502,17 @@ def _repo_folder(ctype: str, input_name: str, value: str) -> Optional[str]:
     return None
 
 
+def _dir_size(folder: Path) -> int:
+    total = 0
+    for p in folder.rglob("*"):
+        try:
+            if p.is_file():
+                total += p.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
 def detect_repo_models(prompt: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Hugging Face repositories a node downloads on its first run (e.g. HunyuanVideo's 16 GB llava text encoder).
 
@@ -532,7 +543,7 @@ def detect_repo_models(prompt: Dict[str, Any]) -> List[Dict[str, Any]]:
                 status = job["status"]
             else:
                 status = "missing"
-            size = sum(p.stat().st_size for p in target.rglob("*") if p.is_file()) if status == "ready" else 0
+            size = _dir_size(target) if status == "ready" else 0
             found[value] = {
                 "name": value, "kind": "repo", "category": folder or "(chosen by the node)", "node_id": node_id,
                 "class_type": ctype, "input": input_name, "used_by": [f"{title} ({node_id})"],

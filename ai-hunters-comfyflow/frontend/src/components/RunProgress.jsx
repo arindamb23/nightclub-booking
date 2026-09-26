@@ -67,7 +67,7 @@ export default function RunProgress({ run, title = 'Current run', onCancel }) {
       )}
       <div className="run-progress mt-16">
         <div className="row between small">
-          <span>{active && prog?.class_type ? <>Executing <b>{prog.class_type}</b> (node {prog.node})</> : run.status === 'preparing' ? 'Starts when the models are ready' : active ? (prog?.phase || 'Waiting for ComfyUI to start the workflow…') : 'Finished'}</span>
+          <span>{active && prog?.class_type ? <>Executing <b>{prog.class_type}</b> (node {prog.node})</> : run.status === 'preparing' ? 'Starts when the models are ready' : active ? (prog?.phase || 'Waiting for ComfyUI to start the workflow…') : run.status === 'failed' ? 'Failed' : run.status === 'cancelled' ? 'Cancelled' : 'Finished'}</span>
           <span className="muted">{prog?.done || 0} / {prog?.total || 0} nodes</span>
         </div>
         <div className="mt-8"><Progress percent={overall} large indeterminate={run.status !== 'preparing' && active && !overall} /></div>

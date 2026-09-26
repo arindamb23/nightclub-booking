@@ -1,0 +1,30 @@
+{
+  "_comment": "Known run errors with a one-click fix. 'match' is a regular expression tested against the run error and its details. Actions: pip (install into ComfyUI's Python), update_node (git pull a custom node folder). 'restart': restart ComfyUI afterwards.",
+  "fixes": [
+    {
+      "id": "transformers-clip-text-model",
+      "match": "has no attribute 'text_model'",
+      "title": "Library version conflict: transformers is too new",
+      "explain": "The node calls CLIPTextModel.text_model, which the Hugging Face 'transformers' library removed in version 5.6. ComfyUI-HunyuanVideoWrapper (and nodes built on it) still use it. The fix installs transformers 5.5 into ComfyUI's Python and restarts ComfyUI; your models and workflows are not touched.",
+      "actions": [{"type": "pip", "args": ["transformers>=4.49,<5.6"]}],
+      "restart": true
+    },
+    {
+      "id": "numpy-2-abi",
+      "match": "numpy\\.core\\.multiarray failed to import|A module that was compiled using NumPy 1\\.x cannot be run in",
+      "title": "Library version conflict: NumPy 2 vs. a package built for NumPy 1",
+      "explain": "A package in ComfyUI's Python was built for NumPy 1.x but NumPy 2 is installed. The fix installs the last NumPy 1 release and restarts ComfyUI.",
+      "actions": [{"type": "pip", "args": ["numpy<2"]}],
+      "restart": true
+    },
+    {
+      "id": "missing-python-module",
+      "match": "No module named '(?P<module>[A-Za-z0-9_]+)",
+      "title": "A Python package is missing: {module}",
+      "explain": "A custom node needs the Python package '{module}', which is not installed in ComfyUI's Python. The fix installs it (pip install {package}) and restarts ComfyUI.",
+      "actions": [{"type": "pip", "args": ["{package}"]}],
+      "restart": true,
+      "packages": {"cv2": "opencv-python", "PIL": "pillow", "sklearn": "scikit-learn", "skimage": "scikit-image", "yaml": "pyyaml", "Crypto": "pycryptodome", "google.protobuf": "protobuf", "sentencepiece": "sentencepiece", "gguf": "gguf", "onnxruntime": "onnxruntime-gpu", "diffusers": "diffusers", "accelerate": "accelerate", "einops": "einops", "timm": "timm"}
+    }
+  ]
+}

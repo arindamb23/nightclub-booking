@@ -158,18 +158,29 @@ def _move(src: Path, dst: Path) -> None:
         shutil.move(str(src), str(dst))  # another drive: copy + delete
 
 
+def _nonempty_file(p: Path) -> bool:
+    """True for a non-empty file; False when it is missing or disappears while we look (a download renaming .part)."""
+    try:
+        return p.is_file() and p.stat().st_size > 0
+    except OSError:
+        return False
+
+
 def find_on_disk(name: str) -> Optional[Path]:
     """A model file anywhere under the models folder (any category / sub-folder)."""
     root = get_settings().models_dir
     base = _norm(name).split("/")[-1]
     direct = [root / d / Path(*_norm(name).split("/")) for d in (os.listdir(root) if root.is_dir() else [])]
     for p in direct:
-        if p.is_file() and p.stat().st_size > 0:
+        if _nonempty_file(p):
             return p
     if root.is_dir():
-        for p in root.rglob(base):
-            if p.is_file() and p.stat().st_size > 0:
-                return p
+        try:
+            for p in root.rglob(base):
+                if _nonempty_file(p):
+                    return p
+        except OSError:
+            return None
     return None
 
 

@@ -9,6 +9,7 @@ import { useSystem } from '../../context/SystemContext.jsx'
 import { formatDate, formatDuration } from '../../utils/format.js'
 import MissingModelsModal from '../../components/MissingModelsModal.jsx'
 import CustomNodesModal from '../../components/CustomNodes.jsx'
+import KnownFixModal from '../../components/KnownFixModal.jsx'
 import RunProgress from '../../components/RunProgress.jsx'
 import FieldControl from '../../components/FieldControl.jsx'
 import { Link } from 'react-router-dom'
@@ -46,6 +47,7 @@ export default function StepRun({ workflow, onBack, onChanged }) {
   const [starting, setStarting] = useState(false)
   const [missing, setMissing] = useState(null) // { models, reason }
   const [nodesNeeded, setNodesNeeded] = useState(null)
+  const [fixRun, setFixRun] = useState(null)
   const runRef = useRef(null)
   const startRef = useRef(null)
   const runCardRef = useRef(null)
@@ -75,6 +77,8 @@ export default function StepRun({ workflow, onBack, onChanged }) {
       const items = outputsToItems(r)
       if (items.length) openPreview(items, 0)
       else msg.showWarning(r.error || 'The run finished without image or video outputs.', { title: 'No previewable output' })
+    } else if (r.status === 'failed' && r.error_code === 'known_fix' && r.fix) {
+      setFixRun(r)
     } else if (r.status === 'failed' && r.error_code === 'nodes_missing' && r.missing_nodes?.length) {
       setNodesNeeded(r.missing_nodes)
     } else if (r.status === 'failed' && r.error_code === 'models_missing') {
@@ -240,6 +244,10 @@ export default function StepRun({ workflow, onBack, onChanged }) {
         </div>
       )}
 
+      {fixRun && (
+        <KnownFixModal run={fixRun} onClose={() => setFixRun(null)}
+          onFixed={() => { setFixRun(null); setTimeout(() => startRef.current?.(), 300) }} />
+      )}
       {nodesNeeded && (
         <CustomNodesModal packs={nodesNeeded} onClose={() => setNodesNeeded(null)}
           onReady={() => { setNodesNeeded(null); onChanged?.(); setTimeout(() => startRef.current?.(), 300) }} />

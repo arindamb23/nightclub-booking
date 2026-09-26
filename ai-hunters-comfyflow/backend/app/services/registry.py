@@ -160,10 +160,16 @@ class ModelRegistry:
 
     def file_status(self, entry: Dict[str, Any], requested_name: Optional[str] = None) -> Dict[str, Any]:
         path = self.resolve_path(entry, requested_name)
-        exists = path.is_file() and path.stat().st_size > 0
         part = path.with_name(path.name + ".part")
-        partial = part.stat().st_size if not exists and part.is_file() else 0
-        return {"path": str(path), "exists": exists, "size": path.stat().st_size if exists else 0, "partial": partial}
+        try:  # a download may rename .part -> file while we look
+            size = path.stat().st_size if path.is_file() else 0
+        except OSError:
+            size = 0
+        try:
+            partial = part.stat().st_size if not size and part.is_file() else 0
+        except OSError:
+            partial = 0
+        return {"path": str(path), "exists": size > 0, "size": size, "partial": partial}
 
     # ------------------------------------------------------------ mutations
     def upsert(self, entry: Dict[str, Any], original_name: Optional[str] = None) -> Dict[str, Any]:

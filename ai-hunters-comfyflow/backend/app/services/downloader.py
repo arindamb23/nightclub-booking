@@ -43,7 +43,10 @@ def parse_repo_key(key: str):
 
 
 def repo_ready(target: Path) -> bool:
-    return target.is_dir() and any(p.is_file() and p.stat().st_size > 0 for p in target.rglob("*"))
+    try:
+        return target.is_dir() and any(p.is_file() and p.stat().st_size > 0 for p in target.rglob("*"))
+    except OSError:  # a file vanished while scanning
+        return False
 
 
 class DownloadError(RuntimeError):

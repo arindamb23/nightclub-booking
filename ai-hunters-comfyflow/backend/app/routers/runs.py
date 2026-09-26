@@ -74,6 +74,28 @@ def run_preview(run_id: str):
     return Response(frame[0], media_type=frame[1], headers={"Cache-Control": "no-store"})
 
 
+@router.post("/runs/{run_id}/fix")
+def apply_fix(run_id: str):
+    """Applies the known fix for this run's error (matched again on the server, never taken from the request)."""
+    from app.services import fixes
+
+    try:
+        run = runs.get(run_id)
+    except RunError as e:
+        raise HTTPException(404, str(e))
+    fix = fixes.match(" ".join([run.get("error") or ""] + list(run.get("error_details") or [])))
+    if not fix:
+        raise HTTPException(409, "There is no known fix for this error.")
+    return fixes.apply(fix)
+
+
+@router.get("/fixes/jobs")
+def fix_jobs():
+    from app.services import fixes
+
+    return {"jobs": fixes.jobs()}
+
+
 @router.post("/runs/{run_id}/cancel")
 def cancel_run(run_id: str):
     try:

@@ -83,7 +83,7 @@ def test_run_is_blocked_until_nodes_are_installed(client, manager_map, monkeypat
     monkeypatch.setattr(nodepacks, "_git", lambda: "git")
     monkeypatch.setattr(nodepacks, "_remember_in_setup", lambda url: commands.append(["remember", url]))
     job = client.post("/api/nodepacks/install", json={"url": "https://github.com/city96/ComfyUI-GGUF", "class_types": ["UnetLoaderGGUF"]}).json()
-    assert job["status"] in ("queued", "installing")
+    assert job["status"] in ("queued", "installing", "installed")  # the simulated install can finish instantly
     from tests.app.conftest import wait_for
 
     done = wait_for(lambda: next((j for j in client.get("/api/nodepacks/jobs").json()["jobs"] if j["status"] in ("installed", "error")), None))

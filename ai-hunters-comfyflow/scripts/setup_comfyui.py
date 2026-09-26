@@ -93,7 +93,9 @@ def main() -> int:
             return 1
 
     # 4. ComfyUI requirements
-    if run([comfy_py, "-m", "pip", "install", "-r", comfy_dir / "requirements.txt"]) != 0:
+    constraints = ROOT / "config" / "python-constraints.txt"
+    pin = ["-c", constraints] if constraints.exists() else []
+    if run([comfy_py, "-m", "pip", "install", "-r", comfy_dir / "requirements.txt", *pin]) != 0:
         print("[ERROR] Installing ComfyUI requirements failed.")
         return 1
 
@@ -104,8 +106,8 @@ def main() -> int:
     failed = []
     if nodes_file.exists():
         for line in nodes_file.read_text(encoding="utf-8").splitlines():
-            url = line.strip()
-            if not url or url.startswith("#"):
+            url = line.split("#", 1)[0].strip()  # lines may end with "# comment"
+            if not url:
                 continue
             name = url.rstrip("/").split("/")[-1].removesuffix(".git")
             dest = custom_dir / name
@@ -115,10 +117,16 @@ def main() -> int:
                 failed.append(name)
                 continue
             req = dest / "requirements.txt"
-            if req.exists() and run([comfy_py, "-m", "pip", "install", "-r", req]) != 0:
+            if req.exists() and run([comfy_py, "-m", "pip", "install", "-r", req, *pin]) != 0:
                 failed.append(f"{name} (requirements)")
     if failed:
         print("[WARN] These custom nodes could not be installed: " + ", ".join(failed))
+
+    # 6. Version limits: also replaces a newer version that is already installed
+    if constraints.exists():
+        say("Applying version limits from config\\python-constraints.txt")
+        if run([comfy_py, "-m", "pip", "install", "-r", constraints]) != 0:
+            print("[WARN] Could not apply config\\python-constraints.txt")
 
     print("[OK] ComfyUI is installed.")
     return 0

@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from app.config import get_settings, replace_with_retry
 from app.events import bus
-from app.services import comfy, modelfolders, nodepacks, workflows
+from app.services import comfy, fixes, modelfolders, nodepacks, workflows
 from cb2c_py.lib.workflow_runner import ComfyUIError, WorkflowCancelled
 
 MAX_SEED = 2**50
@@ -506,6 +506,10 @@ class RunManager:
             run["status"] = "failed"
             run["error"] = e.args[0] if e.args else str(e)
             run["error_details"] = e.details
+            known = fixes.match(" ".join([run["error"] or ""] + list(e.details or [])))
+            if known:  # a known library/version problem with a one-click fix
+                run["error_code"] = "known_fix"
+                run["fix"] = {k: known[k] for k in ("id", "title", "explain", "values")}
             missing = _missing_node_types(" ".join([run["error"] or ""] + list(e.details or [])))
             if missing:  # ComfyUI refused unknown node types: offer to install their packages
                 try:

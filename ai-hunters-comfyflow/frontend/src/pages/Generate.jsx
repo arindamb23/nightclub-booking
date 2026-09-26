@@ -5,6 +5,7 @@ import { ModelStatus, PageHeader, RunStatus, Spinner } from '../components/Commo
 import RunProgress, { useRunTracker } from '../components/RunProgress.jsx'
 import MissingModelsModal from '../components/MissingModelsModal.jsx'
 import CustomNodesModal from '../components/CustomNodes.jsx'
+import KnownFixModal from '../components/KnownFixModal.jsx'
 import UploadModal from '../components/UploadModal.jsx'
 import { Thumb, outputsToItems, usePreview } from '../components/PreviewModals.jsx'
 import { api } from '../api.js'
@@ -107,6 +108,7 @@ export default function Generate() {
   const [starting, setStarting] = useState(false)
   const [missing, setMissing] = useState(null)
   const [nodesNeeded, setNodesNeeded] = useState(null)
+  const [fixRun, setFixRun] = useState(null)
   const [recent, setRecent] = useState([])
   const uploadRef = useRef(null)
   const generateRef = useRef(null)
@@ -173,6 +175,8 @@ export default function Generate() {
       const items = outputsToItems(r)
       if (items.length) openPreview(items, 0)
       else msg.showWarning(r.error || 'The run finished without an image or video.', { title: 'No previewable output' })
+    } else if (r.status === 'failed' && r.error_code === 'known_fix' && r.fix) {
+      setFixRun(r)
     } else if (r.status === 'failed' && r.error_code === 'nodes_missing' && r.missing_nodes?.length) {
       setNodesNeeded(r.missing_nodes)
     } else if (r.status === 'failed' && r.error_code === 'models_missing') {
@@ -416,6 +420,10 @@ export default function Generate() {
         </div>
       )}
 
+      {fixRun && (
+        <KnownFixModal run={fixRun} onClose={() => setFixRun(null)}
+          onFixed={() => { setFixRun(null); setTimeout(() => generateRef.current?.(), 300) }} />
+      )}
       {nodesNeeded && template && (
         <CustomNodesModal packs={nodesNeeded} onClose={() => setNodesNeeded(null)}
           onReady={() => { setNodesNeeded(null); setTimeout(() => generateRef.current?.(), 300) }} />

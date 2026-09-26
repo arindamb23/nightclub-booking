@@ -339,7 +339,8 @@ def _publish(job: Dict[str, Any]) -> None:
     bus.publish({"type": "nodepack", **{k: v for k, v in job.items() if k != "log"}, "log": job["log"][-12:]})
 
 
-def _run(job: Dict[str, Any], args: List[str], cwd: Optional[Path] = None, timeout: int = 1800) -> None:
+def _run(job: Dict[str, Any], args: List[str], cwd: Optional[Path] = None, timeout: int = 1800, publish=None) -> None:
+    _publish = publish or globals()["_publish"]
     job["log"].append("> " + " ".join(Path(a).name if i == 0 else a for i, a in enumerate(args)))
     _publish(job)
     kwargs: Dict[str, Any] = {}
@@ -389,7 +390,9 @@ def _install(job: Dict[str, Any]) -> None:
         _run(job, [git, "clone", "--depth", "1", url, str(target)])
     req = target / "requirements.txt"
     if req.is_file():
-        _run(job, [_python(), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(req)], cwd=target)
+        from app.services.fixes import constraint_args
+
+        _run(job, [_python(), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(req), *constraint_args()], cwd=target)
     if (target / "install.py").is_file():
         _run(job, [_python(), "install.py"], cwd=target)
     _remember_in_setup(url)

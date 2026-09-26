@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.13
+# AI Hunters ComfyFlow v1.0.14
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -153,6 +153,12 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
   list in the folder ComfyUI reads and the **“Models needed for this run”** dialog asks for its download URL or
   file path, exactly like other missing models; the next run downloads it. When ComfyUI's list for that input is
   empty the folder is a guess you can change in the dialog – your choice is remembered for that loader input.
+* **Known problems, fixed with one click** – when a run fails with an error listed in `config\known-fixes.json` (e.g.
+  *'CLIPTextModel' object has no attribute 'text_model'* = `transformers` too new for HunyuanVideoWrapper,
+  NumPy 1/2 conflicts, *No module named 'x'*), the failure dialog explains the cause and offers **Apply fix & run
+  again**: the right package version is installed into ComfyUI's Python, ComfyUI restarts, the run starts again.
+  `config\python-constraints.txt` holds version limits (now `transformers>=4.49,<5.6`) that Setup.bat and every
+  custom-node install respect, so a fresh install does not hit these problems in the first place.
 * **Models a node downloads itself (Hugging Face repositories)** – some nodes take a repository name instead of a
   file, e.g. HunyuanVideoWrapper's *DownloadAndLoadHyVideoTextEncoder* (`Kijai/llava-llama-3-8b-text-encoder-tokenizer`,
   ≈ 16 GB, and `openai/clip-vit-large-patch14`). They are listed with the other models (label *Hugging Face
@@ -239,7 +245,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 86 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 89 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 
