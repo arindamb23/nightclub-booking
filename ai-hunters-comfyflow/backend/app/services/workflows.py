@@ -473,6 +473,22 @@ def _category_for(class_type: str, input_name: str, value: str, hints: Dict[str,
     return _heuristic_category(class_type, input_name)
 
 
+def _is_model_value(ctype: str, input_name: str, value: str) -> bool:
+    """A model file: by extension, by a known loader input, or – for any custom node – because ComfyUI says the
+    input's choices are the files of a models folder (whatever the extension)."""
+    if value.lower().endswith(MODEL_EXTS):
+        return True
+    looks_like_file = "." in value and "\n" not in value and len(value) < 260 and not value.startswith(("http://", "https://"))
+    if not looks_like_file:
+        return False
+    if input_name in INPUT_CATEGORY or (ctype, input_name) in CLASS_INPUT_CATEGORY:
+        return True
+    from app.services import modelfolders
+
+    folder, _ = modelfolders.folder_for(ctype, input_name)  # ComfyUI's answer (or learned from an earlier one)
+    return bool(folder)
+
+
 def detect_models(wid: str, register: bool = True) -> List[Dict[str, Any]]:
     """Finds model files referenced by the workflow and joins them with the registry."""
     meta = _read_meta(wid)
@@ -492,8 +508,7 @@ def detect_models_in_prompt(
         for input_name, value in (node.get("inputs") or {}).items():
             if not isinstance(value, str):
                 continue
-            is_model_input = input_name in INPUT_CATEGORY or (ctype, input_name) in CLASS_INPUT_CATEGORY
-            if not (value.lower().endswith(MODEL_EXTS) or (is_model_input and "." in value)):
+            if not _is_model_value(ctype, input_name, value):
                 continue
             name = value.replace("\\", "/")
             if name in found:
@@ -606,6 +621,11 @@ def resolve_rows(detected: List[Dict[str, Any]], items: List[Dict[str, Any]]) ->
             continue
         entry = registry.get(row["registry_name"]) or {"name": row["registry_name"], "save_dir": ""}
         category = it.get("category") or row["category"]
+        if category != row["category"] and row.get("class_type") and row.get("input"):
+            from app.services import modelfolders
+
+            # the user's folder choice is remembered for this loader input (detection keeps it from now on)
+            modelfolders._learn(f"{row['class_type']}.{row['input']}", category)
         updates.append(({**entry, "url": value, "category": category}, entry["name"]))
     if errors:
         raise WorkflowError("Some entries need a fix:\n" + "\n".join(errors))

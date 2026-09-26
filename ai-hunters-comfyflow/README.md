@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.11
+# AI Hunters ComfyFlow v1.0.12
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -146,6 +146,13 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
   newer *subgraphs* are expanded into their inner nodes when they are converted, exactly like ComfyUI's UI does before
   queueing (inner nodes get ids like `28:3`). Workflows imported with an older version are re-converted automatically
   (the previous `workflow.py` is kept in `history\`).
+* **Any model a workflow needs is found – no fixed lists** – a node input counts as a model when its value has a
+  model extension, when it is a known loader input, **or when ComfyUI says the input's choices are the files of a
+  models folder** (so custom loaders with any input name or file type – `.engine`, `.lora`, … – are found too).
+  If ComfyUI still refuses a file that is not on this PC (*“value not in list”*), it is added to the workflow's model
+  list in the folder ComfyUI reads and the **“Models needed for this run”** dialog asks for its download URL or
+  file path, exactly like other missing models; the next run downloads it. When ComfyUI's list for that input is
+  empty the folder is a guess you can change in the dialog – your choice is remembered for that loader input.
 * **Model folders come from ComfyUI** – the folder a model must be in is asked from ComfyUI, not guessed from the
   input name: the files a loader input accepts (`/object_info`) are compared with the files of every models folder
   (`/models/<folder>`), so custom loaders (HunyuanVideoWrapper, WanVideoWrapper, …) get the right folder too. Answers
@@ -225,7 +232,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 82 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 84 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 

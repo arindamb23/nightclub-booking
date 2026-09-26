@@ -264,3 +264,26 @@ def fix_from_validation(details: List[str]) -> List[Dict[str, Any]]:
         if change:
             changes.append(change)
     return changes
+
+
+def missing_from_validation(details: List[str]) -> List[Dict[str, Any]]:
+    """Models ComfyUI refused that are not on this computer at all: registered (right folder) so the user is asked
+    for their download URL – also for model inputs ComfyFlow did not recognise before."""
+    from app.services.registry import registry
+
+    folders = folder_lists(force=True) or {}
+    out = []
+    for item in parse_value_not_in_list(details):
+        value = item["value"]
+        if not re.search(r"\.[A-Za-z0-9]{2,12}$", value) or find_on_disk(value):
+            continue
+        key = f"{item['class_type']}.{item['input']}"
+        folder = match_folder(item["options"], folders) or _read_learned().get(key)
+        if not folder:
+            from app.services.workflows import _heuristic_category
+
+            folder = _heuristic_category(item["class_type"], item["input"])
+        _learn(key, folder)  # from now on this input is detected as a model input, before the run
+        registry.ensure_entry(value, folder)
+        out.append({**item, "folder": folder})
+    return out

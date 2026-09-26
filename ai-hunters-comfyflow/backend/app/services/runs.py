@@ -472,6 +472,13 @@ class RunManager:
                 # "value not in list" for a model: the file is in a folder ComfyUI does not read -> move it, retry once
                 moved = modelfolders.fix_from_validation(e.details or [])
                 if not moved:
+                    unknown = modelfolders.missing_from_validation(e.details or [])
+                    if unknown:  # models ComfyUI needs that are not on disk: ask for their URL (dialog)
+                        names = {u["value"] for u in unknown}
+                        rows = [r for r in self._detect(run) if r["name"] in names]
+                        raise ModelsMissing([_model_brief(r) for r in rows] or [
+                            {"name": u["value"], "category": u["folder"], "url": "", "status": "no_url", "error": "",
+                             "used_by": [f"{u['class_type']} ({u['node_id']})"], "resolved_dir": ""} for u in unknown])
                     raise
                 run.setdefault("model_moves", []).extend(moved)
                 prog["phase"] = f"Moved {len(moved)} model(s) to the folder ComfyUI reads; sending the workflow again"
@@ -491,7 +498,7 @@ class RunManager:
             run["status"] = "cancelled"
         except ModelsMissing as e:
             run["status"] = "failed"
-            run["error"] = "Some models could not be downloaded. Enter the correct URL or file path and run again."
+            run["error"] = "Some models are not on this computer or could not be downloaded. Enter the download URL or file path and run again."
             run["error_code"] = "models_missing"
             run["failed_models"] = e.models
             run["error_details"] = [f"{m['name']}: {m['error'] or 'no download URL'}" for m in e.models]

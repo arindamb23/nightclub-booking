@@ -13,10 +13,12 @@ FOLDERS = {
     "vae": {"ae.safetensors", "ae.sft", "wan_2.1_vae.safetensors"},
     "upscale_models": {"4x.pth"},
     "loras": set(),
+    "tensorrt": {"a.engine", "b.engine"},
 }
 OPTIONS = {
     ("HyVideoModelLoader", "model"): sorted(FOLDERS["diffusion_models"]),
     ("HyVideoVAELoader", "model_name"): sorted(FOLDERS["vae"]),
+    ("TRTEngineLoader", "engine_name"): sorted(FOLDERS["tensorrt"]),
 }
 
 
@@ -113,3 +115,49 @@ def test_run_moves_model_and_retries_after_value_not_in_list(client, comfy_folde
     assert done["status"] == "succeeded", done
     assert calls["n"] == 2 and done["model_moves"][0]["to"] == "vae"
     assert (get_settings().models_dir / "vae" / name).is_file()
+
+
+def test_any_custom_model_input_is_detected_through_comfyui(client, comfy_folders):
+    """No extension list, no input-name list: ComfyUI says 'engine_name' lists the files of models/tensorrt."""
+    prompt = {"3": {"class_type": "TRTEngineLoader", "inputs": {"engine_name": "c.engine", "note": "v1.2 fast"}}}
+    rows = workflows.detect_models_in_prompt(prompt)
+    assert [(r["name"], r["category"], r["status"]) for r in rows] == [("c.engine", "tensorrt", "no_url")]
+
+
+def test_model_comfyui_asks_for_but_nobody_detected_opens_the_models_dialog(client, comfy_folders, monkeypatch, tmp_path, files_dir, files_url):
+    from cb2c_py.lib.workflow_runner import ComfyUIError, WorkflowRunner
+    from tests.app.test_api import _wait_run
+
+    real = WorkflowRunner.run_workflow
+
+    def reject_unknown(self, wf, *a, **kw):
+        if not (get_settings().models_dir / "loras" / "mystery_style.lora").is_file():
+            raise ComfyUIError("Prompt outputs failed validation", [
+                "Node StyleApply (ID 4) input 'style_file': style_file: 'mystery_style.lora' not in []"])
+        return real(self, wf, *a, **kw)
+    monkeypatch.setattr(WorkflowRunner, "run_workflow", reject_unknown)
+    monkeypatch.setattr(modelfolders, "ensure_placement", lambda prompt, rows: [])
+    prompt = {"2": {"class_type": "EmptyLatentImage", "inputs": {"width": 64, "height": 64, "batch_size": 1}},
+              "4": {"class_type": "StyleApply", "inputs": {"style_file": "mystery_style.lora", "latent": ["2", 0]}},
+              "9": {"class_type": "SaveImage", "inputs": {"images": ["2", 0], "filename_prefix": "x"}}}
+    p = tmp_path / "style_api.json"
+    p.write_text(json.dumps(prompt), encoding="utf-8")
+    with open(p, "rb") as f:
+        wf = client.post("/api/workflows/upload", files={"file": ("style_api.json", f, "application/json")}).json()
+    assert client.get(f"/api/workflows/{wf['id']}/models").json()["total"] == 0  # '.lora' is not a known extension
+    done = _wait_run(client, client.post("/api/runs", json={"workflow_id": wf["id"]}).json()["id"])
+    assert done["status"] == "failed" and done["error_code"] == "models_missing"
+    # ComfyUI's list was empty, so the folder is a guess the user can change in the dialog
+    assert [(m["name"], m["category"], m["status"]) for m in done["failed_models"]] == [("mystery_style.lora", "checkpoints", "no_url")]
+    # from now on it is part of the workflow's model list, and the user's URL is used on the next run
+    rows = client.get(f"/api/workflows/{wf['id']}/models").json()["models"]
+    assert [r["name"] for r in rows] == ["mystery_style.lora"]
+    (files_dir / "style.bin").write_bytes(b"s" * 256)
+    r = client.post(f"/api/workflows/{wf['id']}/models/resolve",
+                    json={"items": [{"name": "mystery_style.lora", "value": f"{files_url}/style.bin", "category": "loras"}]})
+    assert r.status_code == 200, r.text
+    assert client.get(f"/api/workflows/{wf['id']}/models").json()["models"][0]["category"] == "loras"  # choice kept
+    run = client.post("/api/runs", json={"workflow_id": wf["id"]}).json()
+    done = _wait_run(client, run["id"])
+    assert done["status"] == "succeeded", done
+    assert (get_settings().models_dir / "loras" / "mystery_style.lora").is_file()
