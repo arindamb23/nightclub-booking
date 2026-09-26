@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.10
+# AI Hunters ComfyFlow v1.0.11
 """FastAPI application for AI Hunters ComfyFlow."""
 import asyncio
 from contextlib import asynccontextmanager

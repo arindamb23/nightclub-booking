@@ -76,6 +76,12 @@ export default function RunProgress({ run, title = 'Current run', onCancel }) {
         )}
         {nodePct != null && active && <div className="mt-8"><Progress percent={nodePct} /></div>}
       </div>
+      {run.model_moves?.length > 0 && (
+        <div className="callout callout-info small mt-16"><Icon name="info" /><div>
+          <b>{run.model_moves.length} model(s) moved to the folder ComfyUI reads:</b>
+          <ul>{run.model_moves.map((m) => <li key={m.name}><span className="mono">{m.name}</span>: models\{m.from} → models\{m.to}</li>)}</ul>
+        </div></div>
+      )}
       <div className="mt-16"><RunHealth run={run} compact onOpenConsole={() => setLive('console')} /></div>
       {items.length > 0 && (
         <div className="thumbs mt-16">

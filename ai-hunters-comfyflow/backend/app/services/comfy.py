@@ -134,7 +134,9 @@ def write_extra_model_paths() -> Optional[Path]:
         f"  base_path: {s.models_dir.as_posix()}",
         "  is_default: true",
     ]
-    for c in CATEGORIES:
+    from app.services.registry import all_categories
+
+    for c in all_categories():  # includes folders custom nodes added (learned from ComfyUI)
         if c != "other":
             lines.append(f"  {c}: {c}/")
     target.write_text("\n".join(lines) + "\n", encoding="utf-8")

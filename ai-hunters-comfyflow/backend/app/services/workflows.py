@@ -40,8 +40,6 @@ INPUT_CATEGORY = {
     "style_model_name": "style_models",
     "gligen_name": "gligen",
     "upscale_model": "upscale_models",
-    "model_name": "upscale_models",
-    "model_path": "diffusion_models",
     "photomaker_model_name": "photomaker",
     "hypernetwork_name": "hypernetworks",
     "embedding": "embeddings",
@@ -437,20 +435,42 @@ def _prompt(wid: str) -> Dict[str, Any]:
 
 
 # ----------------------------------------------------------------- models
-def _category_for(class_type: str, input_name: str, value: str, hints: Dict[str, str]) -> str:
-    if value in hints and hints[value] in CATEGORIES:
-        return hints[value]
+# generic input names whose folder depends on the node (e.g. "model_name" is an upscaler, a VAE or an LLM)
+GENERIC_MODEL_INPUTS = {"model", "model_name", "model_path", "ckpt", "name", "model_file"}
+CLASS_KEYWORDS = (  # checked in order against the node's class name
+    ("upscale", "upscale_models"), ("lora", "loras"), ("vae", "vae"), ("controlnet", "controlnet"),
+    ("clipvision", "clip_vision"), ("clip_vision", "clip_vision"), ("textencoder", "text_encoders"),
+    ("t5", "text_encoders"), ("clip", "text_encoders"), ("llm", "LLM"),
+    ("unet", "diffusion_models"), ("diffusion", "diffusion_models"), ("transformer", "diffusion_models"),
+    ("modelloader", "diffusion_models"), ("checkpoint", "checkpoints"),
+)
+
+
+def _heuristic_category(class_type: str, input_name: str) -> str:
     if (class_type, input_name) in CLASS_INPUT_CATEGORY:
         return CLASS_INPUT_CATEGORY[(class_type, input_name)]
     if "GGUF" in class_type and input_name == "unet_name":
         return "unet"
+    low = class_type.lower().replace("_", "").replace(" ", "")
+    if input_name in GENERIC_MODEL_INPUTS or input_name not in INPUT_CATEGORY:
+        for key, cat in CLASS_KEYWORDS:
+            if key.replace("_", "") in low:
+                return cat
     if input_name in INPUT_CATEGORY:
         return INPUT_CATEGORY[input_name]
-    low = class_type.lower()
-    for key, cat in (("lora", "loras"), ("vae", "vae"), ("controlnet", "controlnet"), ("upscale", "upscale_models"), ("clip", "text_encoders"), ("unet", "diffusion_models")):
-        if key in low:
-            return cat
     return "checkpoints"
+
+
+def _category_for(class_type: str, input_name: str, value: str, hints: Dict[str, str]) -> str:
+    """The models folder of an input: ComfyUI's own answer first, then the workflow's hint, then the names."""
+    from app.services import modelfolders
+
+    folder, _ = modelfolders.folder_for(class_type, input_name)
+    if folder:
+        return folder
+    if value in hints and hints[value] in CATEGORIES:
+        return hints[value]
+    return _heuristic_category(class_type, input_name)
 
 
 def detect_models(wid: str, register: bool = True) -> List[Dict[str, Any]]:
@@ -487,6 +507,8 @@ def detect_models_in_prompt(
                 "input": input_name,
                 "used_by": [f"{title} ({node_id})"],
             }
+    if register:
+        _reconcile_folders(found)
     rows = []
     for name, item in found.items():
         entry = registry.get(name)
@@ -520,6 +542,22 @@ def detect_models_in_prompt(
             "job": job,
         })
     return rows
+
+
+def _reconcile_folders(found: Dict[str, Dict[str, Any]]) -> None:
+    """A model registered (or downloaded) into a folder ComfyUI does not read for its input is moved to the right one."""
+    from app.services import modelfolders
+
+    for name, item in found.items():
+        folder, source = modelfolders.folder_for(item["class_type"], item["input"])
+        if not folder or not source:
+            continue
+        entry = registry.get(name)
+        if entry is not None and not modelfolders.same_folder(entry.get("category", ""), folder):
+            try:
+                modelfolders.relocate(name, folder, f"{item['class_type']} reads '{item['input']}' from models/{folder}")
+            except (OSError, RegistryError):
+                continue
 
 
 def download_missing(wid: str) -> List[Dict[str, Any]]:

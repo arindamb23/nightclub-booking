@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.services.registry import registry, RegistryError, CATEGORIES
+from app.services.registry import registry, RegistryError, CATEGORIES, all_categories
 from app.services.downloader import downloader
 
 router = APIRouter(prefix="/api/models", tags=["models"])
@@ -34,7 +34,7 @@ def _row(entry):
 
 @router.get("")
 def list_models():
-    return {"models": [_row(m) for m in registry.all()], "categories": CATEGORIES}
+    return {"models": [_row(m) for m in registry.all()], "categories": all_categories()}
 
 
 @router.post("")

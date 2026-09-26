@@ -17,7 +17,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from app.config import get_settings, replace_with_retry
 from app.events import bus
-from app.services import comfy, nodepacks, workflows
+from app.services import comfy, modelfolders, nodepacks, workflows
 from cb2c_py.lib.workflow_runner import ComfyUIError, WorkflowCancelled
 
 MAX_SEED = 2**50
@@ -187,6 +187,7 @@ class RunManager:
         return self._launch(
             {"workflow_id": workflow_id, "workflow_name": meta["name"], "overrides": overrides},
             rows, meta["node_count"], lambda: nodepacks.check_workflow(workflow_id),
+            lambda: workflows._prompt(workflow_id),
         )
 
     def start_template(self, template_id: str, values: Dict[str, Any]) -> Dict[str, Any]:
@@ -200,6 +201,7 @@ class RunManager:
             {"workflow_id": None, "template_id": template_id, "template_values": values,
              "workflow_name": t["name"], "task": t["task"], "overrides": {}},
             rows, 0, lambda: nodepacks.check_prompt(templates.build(template_id, values, placeholder=True).to_prompt()),
+            lambda: templates.build(template_id, values, placeholder=True).to_prompt(),
         )
 
     @staticmethod
@@ -217,13 +219,23 @@ class RunManager:
         return workflows.detect_models(run["workflow_id"], register=False)
 
     def _launch(self, source: Dict[str, Any], rows: List[Dict[str, Any]], node_count: int,
-                node_check: Optional[Callable[[], Dict[str, Any]]] = None) -> Dict[str, Any]:
+                node_check: Optional[Callable[[], Dict[str, Any]]] = None,
+                prompt_fn: Optional[Callable[[], Dict[str, Any]]] = None) -> Dict[str, Any]:
         reachable = comfy.status()["reachable"]
         if reachable and node_check is not None:
             # custom nodes first: without them ComfyUI rejects the whole workflow
             packs = node_check().get("packs") or []
             if packs:
                 raise nodepacks.NodesMissing(packs)
+        moves: List[Dict[str, Any]] = []
+        if reachable and prompt_fn is not None:
+            # models in a folder ComfyUI does not read for their input are moved where it looks
+            try:
+                moves = modelfolders.ensure_placement(prompt_fn(), rows)
+            except Exception:  # noqa: BLE001 - never block a run on this check
+                moves = []
+            if moves:
+                rows = self._detect(source)
         need_input = [_model_brief(r) for r in rows if r["status"] in ("no_url", "error")]
         if need_input:
             raise ModelsMissing(need_input)
@@ -250,6 +262,7 @@ class RunManager:
             "error_code": None,
             "error_details": [],
             "failed_models": [],
+            "model_moves": moves,
         }
         self._save(run)
         cancel = threading.Event()
@@ -451,12 +464,21 @@ class RunManager:
             self._save(run)
             self._publish(run)
             threading.Thread(target=self._watch, args=(run, finished), daemon=True, name=f"watch-{run['id']}").start()
-            outputs = runner.run_workflow(
-                wf,
-                progress_callback=on_message,
-                output_dir=str(outputs_dir(run["id"])),
-                cancel_event=cancel,
-            )
+            try:
+                outputs = runner.run_workflow(
+                    wf, progress_callback=on_message, output_dir=str(outputs_dir(run["id"])), cancel_event=cancel,
+                )
+            except ComfyUIError as e:
+                # "value not in list" for a model: the file is in a folder ComfyUI does not read -> move it, retry once
+                moved = modelfolders.fix_from_validation(e.details or [])
+                if not moved:
+                    raise
+                run.setdefault("model_moves", []).extend(moved)
+                prog["phase"] = f"Moved {len(moved)} model(s) to the folder ComfyUI reads; sending the workflow again"
+                self._publish(run)
+                outputs = runner.run_workflow(
+                    wf, progress_callback=on_message, output_dir=str(outputs_dir(run["id"])), cancel_event=cancel,
+                )
             run["outputs"] = [
                 {k: o[k] for k in ("filename", "kind", "size", "node_id", "type")} for o in outputs
             ]

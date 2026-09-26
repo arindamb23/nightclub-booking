@@ -24,6 +24,29 @@ class RegistryError(ValueError):
     pass
 
 
+_SAFE_CATEGORY = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$")
+
+
+def valid_category(category: str) -> bool:
+    """The built-in categories, or any folder name ComfyUI reports (custom nodes add folders like LLM or sams)."""
+    if category in CATEGORIES:
+        return True
+    if not _SAFE_CATEGORY.match(category or "") or category in ("..", "."):
+        return False
+    from app.services import modelfolders
+
+    known = set(modelfolders.learned_folders()) | set((modelfolders._folders_cache.get("data") or {}).keys())
+    return category in known or (get_settings().models_dir / category).is_dir()
+
+
+def all_categories() -> List[str]:
+    """Built-in categories plus the folders ComfyUI reported (custom nodes add their own)."""
+    from app.services import modelfolders
+
+    extra = set(modelfolders.learned_folders()) | set((modelfolders._folders_cache.get("data") or {}).keys())
+    return CATEGORIES[:-1] + sorted(c for c in extra if c not in CATEGORIES and c not in modelfolders.SKIP_FOLDERS) + ["other"]
+
+
 def is_local_source(url: str) -> bool:
     """True when the "URL" is a file on this computer (C:\\..., \\\\server\\..., /path or file://)."""
     u = (url or "").strip()
@@ -154,7 +177,7 @@ class ModelRegistry:
         elif url and not url.lower().startswith(("http://", "https://")):
             raise RegistryError("Enter a download URL (http:// or https://) or the full path of a model file on this computer.")
         category = entry.get("category") or "checkpoints"
-        if category not in CATEGORIES:
+        if not valid_category(category):
             raise RegistryError(f"Unknown category '{category}'.")
         new = {"name": name, "url": url, "category": category, "save_dir": str(entry.get("save_dir", "") or "").strip()}
         with self._lock:
@@ -176,7 +199,7 @@ class ModelRegistry:
         with self._lock:
             existing = self.get(name)
             if existing is None:
-                cat = category if category in CATEGORIES else "checkpoints"
+                cat = category if valid_category(category) else "checkpoints"
                 return self.upsert({"name": name, "url": url, "category": cat})
             if url and not existing.get("url"):
                 existing["url"] = url

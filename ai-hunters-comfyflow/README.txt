@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.10
+# AI Hunters ComfyFlow v1.0.11
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -146,6 +146,15 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
   newer *subgraphs* are expanded into their inner nodes when they are converted, exactly like ComfyUI's UI does before
   queueing (inner nodes get ids like `28:3`). Workflows imported with an older version are re-converted automatically
   (the previous `workflow.py` is kept in `history\`).
+* **Model folders come from ComfyUI** – the folder a model must be in is asked from ComfyUI, not guessed from the
+  input name: the files a loader input accepts (`/object_info`) are compared with the files of every models folder
+  (`/models/<folder>`), so custom loaders (HunyuanVideoWrapper, WanVideoWrapper, …) get the right folder too. Answers
+  are remembered in `data\model_folders.json` for when ComfyUI is offline (then the node's name decides: a
+  `model_name` on a *VAE* loader → `vae`, on a *ModelLoader* → `diffusion_models`, on an *Upscale* loader →
+  `upscale_models`). A model already downloaded into the wrong folder is **moved** to the right one (instant on the
+  same drive) when the workflow is opened or run; if ComfyUI still answers *“value not in list”* for a model, the
+  file is moved to the folder whose files match that list and the run is **sent again automatically**. The run
+  card lists every file that was moved. Models with a custom *Save to* folder are left where you put them.
 * **Models** – grid (5 per page) of all models: edit name, download URL (or local file path), category and save
   location; add, delete, download, cancel. Downloads resume and run in the background, **one model at a time**
   by default (the others show *Waiting in the queue* and start by themselves) – the most reliable way to fetch
@@ -216,7 +225,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 77 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 82 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 
@@ -253,6 +262,9 @@ cd backend
 * **Live node view / editor went blank during a long step** – fixed in v1.0.9 (cards were re-created without their
   measured size, so they stayed hidden while a node such as *CLIP Text Encode* loaded a big text encoder silently).
   A long silent step shows which node it is and whether ComfyUI's memory use is changing (a model is loading).
+* **“Prompt outputs failed validation … 'X.safetensors' not in [...]” although the model shows Ready** – the file was
+  in a folder ComfyUI does not read for that loader (v1.0.10 and older guessed `model_name` = upscale model,
+  `model` = checkpoint). Since v1.0.11 it is moved automatically; just run again.
 * **“Node 'workflow/NAME' not found”** – that is a ComfyUI *group node*, not a missing package; since v1.0.8 it is
   expanded automatically (open the workflow again or just run it).
 * **A custom node install fails** – open *Show install log* in the dialog. Common causes: no internet / GitHub blocked,
