@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.16
+# AI Hunters ComfyFlow v1.0.17
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -267,7 +267,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 105 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 107 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 
@@ -309,6 +309,11 @@ cd backend
   `model` = checkpoint). Since v1.0.11 it is moved automatically; just run again.
 * **“Node 'workflow/NAME' not found”** – that is a ComfyUI *group node*, not a missing package; since v1.0.8 it is
   expanded automatically (open the workflow again or just run it).
+* **“No build for PyTorch 2.11 – builds exist for PyTorch …”** (Nunchaku, SageAttention, FlashAttention) – compiled
+  engines must be built for exactly your PyTorch version; a build for an older PyTorch cannot load. ComfyFlow never
+  changes your PyTorch or other packages for one node: nothing is installed or removed, the rest of ComfyUI keeps
+  working, and only that node pack stays unavailable until its authors publish a build for your PyTorch (Repair
+  then installs it). Download links are checked before pip runs.
 * **ComfyUI-nunchaku: “No module named 'nunchaku'”** – the node pack is installed but not its engine. Press
   **Repair** in *Settings → Custom nodes health* (or run Setup.bat). No Nunchaku wheel exists for every PyTorch
   version: if Repair reports that, it names the supported versions (see the Nunchaku installation guide).

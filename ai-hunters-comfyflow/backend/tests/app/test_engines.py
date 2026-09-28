@@ -51,12 +51,40 @@ ENV = {"python_version": "cp312", "os": "win", "platform_tag": "win_amd64", "tor
 def test_nunchaku_wheel_matches_python_torch_and_platform(monkeypatch):
     engine = engines.for_folder("ComfyUI-nunchaku")
     monkeypatch.setattr(engines, "_fetch_json", lambda url, local: CDN)
-    [(url, desc)] = engines._resolve_versions_list(engine, ENV, None)[:1]
+    monkeypatch.setattr(engines, "url_exists", lambda url: True)
+    url, desc = engines._resolve_versions_list(engine, ENV, None)[0]
     assert url == "https://github.com/nunchaku-tech/nunchaku/releases/download/v1.2.0/nunchaku-1.2.0+torch2.8-cp312-cp312-win_amd64.whl"
-    newer = engines._resolve_versions_list(engine, {**ENV, "torch": "2.10.1+cu130"}, None)[0]
-    assert "torch2.9" in newer[0] and "closest to your PyTorch" in newer[1]  # like the pack's own installer
     with pytest.raises(engines.EngineError):
         engines._resolve_versions_list(engine, {**ENV, "python_version": "cp39"}, None)
+
+
+def test_newer_pytorch_than_the_engine_supports_changes_nothing(monkeypatch):
+    """PyTorch 2.11 + Nunchaku built up to 2.9: no 'closest' build (it cannot load), no download, a clear answer."""
+    engine = engines.for_folder("ComfyUI-nunchaku")
+    monkeypatch.setattr(engines, "_fetch_json", lambda url, local: CDN)
+    asked = []
+    monkeypatch.setattr(engines, "url_exists", lambda url: asked.append(url) or True)
+    with pytest.raises(engines.TorchUnsupported) as e:
+        engines._resolve_versions_list(engine, {**ENV, "torch": "2.11.0+cu128"}, None)
+    assert e.value.supported == ["2.7", "2.8", "2.9"] and "2.11" in str(e.value) and asked == []
+    cmds = []
+    monkeypatch.setattr(engines, "environment", lambda mods: {**ENV, "torch": "2.11.0+cu128", "modules": {"nunchaku": "0.16.1"}})
+    with pytest.raises(engines.TorchUnsupported):
+        engines.ensure(engine, None, cmds.append, lambda m: None)
+    assert cmds == []  # nothing installed, nothing uninstalled – not even the unrelated package
+
+
+def test_missing_release_files_are_skipped_before_pip(monkeypatch):
+    """The newest release lacks this build (the 404s in the Setup log): the next release that has it is used."""
+    engine = engines.for_folder("ComfyUI-nunchaku")
+    monkeypatch.setattr(engines, "_fetch_json", lambda url, local: CDN)
+    monkeypatch.setattr(engines, "url_exists", lambda url: "1.1.0" in url)
+    url, _ = engines._resolve_versions_list(engine, ENV, None)[0]
+    assert "/v1.1.0/nunchaku-1.1.0+torch2.8-cp312-cp312-win_amd64.whl" in url
+    monkeypatch.setattr(engines, "url_exists", lambda url: False)
+    with pytest.raises(engines.EngineError) as e:
+        engines._resolve_versions_list(engine, ENV, None)
+    assert "checked" in str(e.value)
 
 
 def test_ensure_replaces_the_unrelated_pypi_package(monkeypatch):
@@ -64,6 +92,7 @@ def test_ensure_replaces_the_unrelated_pypi_package(monkeypatch):
     assert engine["module"] == "nunchaku"
     monkeypatch.setattr(engines, "environment", lambda mods: {**ENV, "modules": {"nunchaku": "0.16.1"}})
     monkeypatch.setattr(engines, "_fetch_json", lambda url, local: CDN)
+    monkeypatch.setattr(engines, "url_exists", lambda url: True)
     cmds, logs = [], []
     assert engines.ensure(engine, None, cmds.append, logs.append) is True
     assert cmds[0][-3:] == ["uninstall", "-y", "nunchaku"]
@@ -114,9 +143,9 @@ def test_github_release_resolver_reports_what_exists(monkeypatch):
     engine = engines.load()["sageattention"]
     [(url, desc)] = engines._resolve_github_release(engine, ENV, None)
     assert url.endswith(ASSETS[0]) and "woct0rdho/SageAttention" in desc
-    with pytest.raises(engines.EngineError) as e:
+    with pytest.raises(engines.TorchUnsupported) as e:
         engines._resolve_github_release(engine, {**ENV, "torch": "2.5.1"}, None)
-    assert "Available:" in str(e.value) and "torch2.8" in str(e.value)
+    assert "2.8" in e.value.supported
     with pytest.raises(engines.EngineError):
         engines._resolve_github_release(engine, {**ENV, "os": "linux", "platform_tag": "linux_x86_64"}, None)  # no Linux repo
 

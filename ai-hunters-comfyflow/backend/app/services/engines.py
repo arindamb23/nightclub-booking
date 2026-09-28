@@ -53,6 +53,15 @@ class EngineError(ValueError):
     pass
 
 
+class TorchUnsupported(EngineError):
+    """No build of the engine for the installed PyTorch; ``supported`` lists the PyTorch versions it has builds for."""
+
+    def __init__(self, message: str, supported: List[str], current: str):
+        super().__init__(message)
+        self.supported = sorted(set(supported), key=_vtuple)
+        self.current = current
+
+
 # ------------------------------------------------------------------ config
 def load() -> Dict[str, Dict[str, Any]]:
     """{key: engine}; keys are lower-case pack folder names or engine names."""
@@ -198,36 +207,55 @@ def _pick(value: Any, env: Dict[str, Any]) -> Any:
     return value.get(env["os"]) if isinstance(value, dict) else value
 
 
+def url_exists(url: str) -> Optional[bool]:
+    """True/False from a HEAD request (redirects followed); None when the host could not be asked."""
+    try:
+        r = requests.head(url, allow_redirects=True, timeout=20, headers={"User-Agent": "AI-Hunters-ComfyFlow"})
+        if r.status_code in (403, 405):  # some CDNs refuse HEAD: ask for the first byte instead
+            r = requests.get(url, stream=True, timeout=20, headers={"Range": "bytes=0-0", "User-Agent": "AI-Hunters-ComfyFlow"})
+            r.close()
+        return r.status_code < 400
+    except requests.RequestException:
+        return None
+
+
 def _resolve_versions_list(engine: Dict[str, Any], env: Dict[str, Any], pack_dir) -> List[Tuple[str, str]]:
-    """[(pip argument, description)] per mirror, from a versions list (nunchaku.tech)."""
+    """[(pip argument, description)] from a versions list (nunchaku.tech): the newest release that really has a file
+    for this Python, platform and **exactly this PyTorch** (a build for another PyTorch cannot load)."""
     config = _fetch_json(engine["versions_url"], pack_dir / engine["local_copy"] if pack_dir and engine.get("local_copy") else None)
-    versions = config.get("versions") or []
+    versions = sorted(config.get("versions") or [], key=_vtuple, reverse=True)
     if not versions:
         raise EngineError("The versions list is empty.")
     if env["python_version"] not in (config.get("supported_python") or []):
         raise EngineError(f"No build for Python {env['python_version']} (supported: {', '.join(config.get('supported_python') or [])}).")
-    mm = "torch" + torch_mm(env)
-    supported = config.get("supported_torch") or []
-    if mm in supported:
-        chosen = mm
-    else:  # like the pack's own installer: the closest lower PyTorch it has a build for
-        lower = sorted((t for t in supported if _vtuple(t) <= _vtuple(mm)), key=_vtuple, reverse=True)
-        if not lower:
-            raise EngineError(f"No build for PyTorch {env['torch']} (supported: {', '.join(supported)}).")
-        chosen = lower[0]
-    version = versions[0]
-    filename = config["filename_template"].format(version=version, torch_version=chosen,
-                                                  python_version=env["python_version"], platform=env["platform_tag"])
-    tag = "v" + version.replace(".dev", "dev") if "dev" in version else "v" + version
-    out = []
-    for source in engine.get("sources") or list((config.get("url_templates") or {}).keys()):
-        url_t = (config.get("url_templates") or {}).get(source)
-        if url_t:
-            note = "" if chosen == mm else f" — built for {chosen}, closest to your PyTorch {env['torch']}"
-            out.append((url_t.format(version_tag=tag, filename=filename), f"{filename} ({source}){note}"))
-    if not out:
+    mm = torch_mm(env)
+    supported = [t.replace("torch", "") for t in config.get("supported_torch") or []]
+    if mm not in supported:
+        raise TorchUnsupported(f"No build for PyTorch {env['torch']} – builds exist for PyTorch {', '.join(sorted(supported, key=_vtuple))}.",
+                               supported, env["torch"])
+    templates = config.get("url_templates") or {}
+    sources = [s for s in (engine.get("sources") or list(templates)) if templates.get(s)]
+    if not config.get("filename_template") or not sources:
         raise EngineError("The versions list has no download template.")
-    return out
+    checked, unknown = [], []
+    for version in versions[:6]:  # newest first; a release may not have every combination
+        filename = config["filename_template"].format(version=version, torch_version="torch" + mm,
+                                                      python_version=env["python_version"], platform=env["platform_tag"])
+        tag = "v" + version.replace(".dev", "dev") if "dev" in version else "v" + version
+        for source in sources:
+            url = templates[source].format(version_tag=tag, filename=filename)
+            found = url_exists(url)
+            if found:
+                return [(url, f"{filename} ({source})")] + [
+                    (templates[o].format(version_tag=tag, filename=filename), f"{filename} ({o})") for o in sources if o != source]
+            (unknown if found is None else checked).append(f"{version} ({source})")
+    if unknown and not checked:  # nothing could be checked (offline HEAD): let pip try the newest
+        filename = config["filename_template"].format(version=versions[0], torch_version="torch" + mm,
+                                                      python_version=env["python_version"], platform=env["platform_tag"])
+        tag = "v" + versions[0]
+        return [(templates[s].format(version_tag=tag, filename=filename), f"{filename} ({s}, not checked)") for s in sources]
+    raise EngineError(f"No file for Python {env['python_version']}, PyTorch {mm}, {env['platform_tag']} in releases "
+                      f"{', '.join(versions[:6])} (checked {len(checked)} download links).")
 
 
 def github_assets(repo: str, releases: int = 15) -> List[Dict[str, str]]:
@@ -258,7 +286,13 @@ def _resolve_github_release(engine: Dict[str, Any], env: Dict[str, Any], pack_di
     stable = [a for a in assets if not a["prerelease"]] or assets
     wheel = choose_wheel(stable, env) or choose_wheel(assets, env)
     if not wheel:
-        seen = sorted({f"torch{w['torch']}/cu{w['cuda']}/{w['py']}/{w['plat']}" for a in assets for w in [parse_wheel(a["name"])] if w})[:12]
+        parsed = [w for a in assets for w in [parse_wheel(a["name"])] if w]
+        here = [w for w in parsed if wheel_score({**w, "torch": None}, env) is not None]  # fits except PyTorch
+        torches = sorted({w["torch"] for w in here if w["torch"]}, key=_vtuple)
+        if torches and torch_mm(env) not in torches:
+            raise TorchUnsupported(f"{repo} has no build for PyTorch {env['torch']} – builds exist for PyTorch {', '.join(torches)}.",
+                                   torches, env["torch"])
+        seen = sorted({f"torch{w['torch']}/cu{w['cuda']}/{w['py']}/{w['plat']}" for w in parsed})[:12]
         raise EngineError(f"{repo} has no wheel for Python {env['python_version']}, PyTorch {env.get('torch')}, "
                           f"CUDA {env.get('cuda')}, {env['platform_tag']}. Available: {', '.join(seen) or 'none'}.")
     return [(wheel["url"], f"{wheel['name']} (GitHub {repo} {wheel['release']})")]
@@ -306,16 +340,19 @@ def ensure(engine: Dict[str, Any], pack_dir, run: Callable[[List[str]], None], l
         log(f"{title} {have} is already installed.")
         return False
     py = comfy_python()
-    if have:
-        log(f"Removing the unrelated PyPI package '{dist}' {have} (not the engine this node needs).")
-        run([py, "-m", "pip", "uninstall", "-y", dist])
     resolver = RESOLVERS.get(engine.get("resolver", ""))
     if resolver is None:
         raise EngineError(f"Unknown engine resolver '{engine.get('resolver')}' in node-engines.json.")
     try:
         candidates = resolver(engine, env, Path(pack_dir) if pack_dir else None)
+    except TorchUnsupported as e:
+        raise TorchUnsupported(f"{title}: {e}", e.supported, e.current) from e
     except EngineError as e:
         raise EngineError(f"{title}: {e}" + (f" See {engine['help']}" if engine.get("help") else "")) from e
+    # only now – a matching build exists – is anything changed in ComfyUI's Python
+    if have:
+        log(f"Removing the unrelated PyPI package '{dist}' {have} (not the engine this node needs).")
+        run([py, "-m", "pip", "uninstall", "-y", dist])
     pins = torch_pin_args(env)
     last_error = None
     for arg, description in candidates:
