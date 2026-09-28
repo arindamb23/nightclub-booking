@@ -15,6 +15,7 @@ const STATUS = {
   restarting: ['badge-info', 'Restarting ComfyUI'],
   done: ['badge-success', 'Ready'],
   error: ['badge-danger', 'Install failed'],
+  broken: ['badge-danger', 'Installed · failed to load'],
 }
 const BUSY = ['queued', 'installing', 'restarting']
 
@@ -65,7 +66,7 @@ export function useCustomNodes(initialPacks, onReady) {
   }, [])
 
   const installAll = async () => {
-    const todo = packs.filter((p) => ['missing', 'no_url', 'error'].includes(p.status))
+    const todo = packs.filter((p) => ['missing', 'no_url', 'error', 'broken'].includes(p.status))
     const blank = todo.filter((p) => !(p.value || '').trim())
     if (blank.length) { setError(`Enter the GitHub URL for: ${blank.flatMap((p) => p.class_types).join(', ')}`); return }
     wantRestart.current = true
@@ -117,8 +118,8 @@ export function CustomNodeRows({ state, compact = false }) {
                   )}
                   {p.alternatives?.length > 0 && <span className="hint">{p.alternatives.length} other package(s) also provide this node — the most used one is chosen.</span>}
                 </div>
-                {['missing', 'no_url', 'error'].includes(p.status) && (
-                  <button className="btn" onClick={() => install(p)}><Icon name="download" size={14} />{p.status === 'error' ? 'Retry' : 'Install'}</button>
+                {['missing', 'no_url', 'error', 'broken'].includes(p.status) && (
+                  <button className="btn" onClick={() => install(p)}><Icon name={p.status === 'broken' ? 'refresh' : 'download'} size={14} />{p.status === 'broken' ? 'Repair' : p.status === 'error' ? 'Retry' : 'Install'}</button>
                 )}
               </div>
             )}
@@ -126,6 +127,9 @@ export function CustomNodeRows({ state, compact = false }) {
               <div className="small muted mt-8">Not in the ComfyUI-Manager list. Search the node name on GitHub or in ComfyUI-Manager and paste the repository link. If it is a core node, update ComfyUI instead.</div>
             )}
             {p.error && <div className="small mt-8" style={{ color: 'var(--danger)' }}>{p.error}</div>}
+            {p.status === 'broken' && (
+              <div className="small muted mt-8">Repair installs what ComfyUI reported missing{p.missing_modules?.length ? ` (${p.missing_modules.join(', ')})` : ''} — including compiled engines such as Nunchaku, matched to your Python / PyTorch — then restarts ComfyUI.</div>
+            )}
             {p.status === 'installing' && <div className="mt-8"><Progress indeterminate /></div>}
             {log.length > 0 && (
               <div className="mt-8">

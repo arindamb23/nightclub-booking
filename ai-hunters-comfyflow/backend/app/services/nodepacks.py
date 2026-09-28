@@ -233,6 +233,64 @@ def hints_from_source(source: Any) -> Dict[str, Dict[str, str]]:
 _jobs: Dict[str, Dict[str, Any]] = {}  # url -> install job
 
 
+# ------------------------------------------------------------------ import failures (ComfyUI's console log)
+_CUSTOM_DIR = re.compile(r"custom_nodes[\\/]+(?P<folder>[^\\/\s\"']+)")
+_EXC_LINE = re.compile(r"^(?P<type>[A-Za-z_][\w.]*(?:Error|Exception))\b[:\s]*(?P<msg>.*)$")
+_LEVEL_PREFIX = re.compile(r"^\[(?:INFO|WARNING|WARN|ERROR|DEBUG|CRITICAL)\]\s?")
+_NO_MODULE = re.compile(r"No module named '(?P<module>[^'.]+)")
+
+
+def import_failures(log_text: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    """{folder (lower case): {folder, errors, modules}} for custom nodes ComfyUI could not load at its last start.
+
+    Reads logs/comfyui.log (written when ComfyUI is started by ComfyFlow / Start-all.bat). Understands ComfyUI's
+    "Cannot import <path> module for custom nodes: <error>" and Python tracebacks that go through custom_nodes/<pack>.
+    """
+    if log_text is None:
+        p = comfy.log_path()
+        if not p.is_file():
+            return {}
+        log_text = p.read_text(encoding="utf-8", errors="replace")
+    # only the last ComfyUI start counts
+    # only the last ComfyUI start counts (a restart through ComfyUI-Manager appends to the same log)
+    starts = [m.start() for m in re.finditer(r"(Total VRAM \d+ MB|ComfyUI Revision:)", log_text)]
+    if starts:
+        log_text = log_text[starts[-1]:]
+    out: Dict[str, Dict[str, Any]] = {}
+
+    def add(folder: str, error: str) -> None:
+        entry = out.setdefault(folder.lower(), {"folder": folder, "errors": [], "modules": []})
+        if error and error not in entry["errors"]:
+            entry["errors"].append(error)
+        m = _NO_MODULE.search(error or "")
+        if m and m.group("module") not in entry["modules"]:
+            entry["modules"].append(m.group("module"))
+
+    lines = log_text.replace("\r\n", "\n").split("\n")
+    block: Optional[List[str]] = None
+    for raw in lines:
+        line = _LEVEL_PREFIX.sub("", raw.strip()).strip()  # "[INFO] Traceback ..." -> "Traceback ..."
+        if "Cannot import" in line and "custom nodes" in line:
+            m = _CUSTOM_DIR.search(line)
+            if m:
+                add(m.group("folder"), line.split("custom nodes:", 1)[-1].strip())
+            continue
+        if line.startswith("Traceback (most recent call last)"):
+            block = []
+            continue
+        if block is not None:
+            block.append(line)
+            m = _EXC_LINE.match(line)
+            if m and not line.startswith("File "):
+                folders = [f.group("folder") for b in block for f in [_CUSTOM_DIR.search(b)] if f]
+                if folders:
+                    add(folders[0], line)  # the first custom_nodes frame is the pack being imported
+                block = None
+            elif len(block) > 80:
+                block = None
+    return out
+
+
 def _installed_folders() -> set:
     d = custom_nodes_dir()
     return {p.name.lower() for p in d.iterdir() if p.is_dir()} if d.is_dir() else set()
@@ -294,6 +352,7 @@ def resolve_packs(types: List[str], hints: Optional[Dict[str, Dict[str, str]]] =
         pack["class_types"].append(ct)
         pack.setdefault("alternatives", [])
         pack["alternatives"] = list(dict.fromkeys(pack["alternatives"] + [u for u in alternatives.get(ct, []) if u != key]))[:5]
+    failures = import_failures()
     for pack in packs.values():
         if pack["url"]:
             job = _jobs.get(pack["url"])
@@ -303,7 +362,14 @@ def resolve_packs(types: List[str], hints: Optional[Dict[str, Dict[str, str]]] =
             elif job and job["status"] == "error":
                 pack["status"], pack["error"] = "error", job.get("error", "")
             elif folder in installed:
-                pack["status"] = "restart"  # files are there but ComfyUI has not loaded them (restart or broken install)
+                failure = failures.get(folder)
+                if failure and not (job and job["status"] == "installed"):
+                    # ComfyUI started with the files there but could not load them: a Python dependency is missing
+                    pack["status"] = "broken"
+                    pack["error"] = "Installed, but ComfyUI could not load it: " + "; ".join(failure["errors"][:3])
+                    pack["missing_modules"] = failure["modules"]
+                else:
+                    pack["status"] = "restart"  # files are there; ComfyUI has not loaded them yet
             pack["job"] = job and {k: v for k, v in job.items() if k != "log"} | {"log": job["log"][-12:]}
     return sorted(packs.values(), key=lambda p: (p["status"] == "no_url", p["name"].lower()))
 
@@ -395,7 +461,36 @@ def _install(job: Dict[str, Any]) -> None:
         _run(job, [_python(), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(req), *constraint_args()], cwd=target)
     if (target / "install.py").is_file():
         _run(job, [_python(), "install.py"], cwd=target)
+    _install_dependencies(job, target)
     _remember_in_setup(url)
+
+
+def _install_dependencies(job: Dict[str, Any], target: Path) -> None:
+    """Engines that are not plain pip packages (config/node-engines.json) and Python modules ComfyUI's log says are
+    missing for this pack (repair of a pack that failed to load)."""
+    from app.services import engines, fixes
+
+    engine = engines.for_folder(target.name)
+    log = lambda msg: (job["log"].append(msg), _publish(job))  # noqa: E731
+    if engine:
+        try:
+            engines.ensure(engine, target, lambda args: _run(job, args, cwd=target), log)
+        except engines.EngineError as e:
+            raise NodePackError(str(e)) from e
+    failure = import_failures().get(target.name.lower()) or {}
+    for module in failure.get("modules", []):
+        if engine and module == engine.get("module"):
+            continue
+        other = engines.for_module(module)
+        if other:
+            try:
+                engines.ensure(other, None, lambda args: _run(job, args, cwd=target), log)
+            except engines.EngineError as e:
+                raise NodePackError(str(e)) from e
+            continue
+        fix = fixes.match(f"No module named '{module}'")
+        package = (fix or {}).get("values", {}).get("package", module)
+        _run(job, [_python(), "-m", "pip", "install", "--disable-pip-version-check", package, *fixes.constraint_args()], cwd=target)
 
 
 def install(url: str, class_types: Optional[List[str]] = None, name: str = "") -> Dict[str, Any]:
@@ -531,3 +626,46 @@ def _restart_worker() -> None:
         _set_restart("done", "ComfyUI restarted and the new nodes are loaded.")
     except Exception as e:  # noqa: BLE001 - reported to the UI
         _set_restart("error", f"Restart failed: {e}")
+
+
+# ------------------------------------------------------------------ health (Settings page)
+def _remote_url(folder: Path) -> Optional[str]:
+    cfg = folder / ".git" / "config"
+    if not cfg.is_file():
+        return None
+    m = re.search(r'\[remote "origin"\][^\[]*?url\s*=\s*(\S+)', cfg.read_text(encoding="utf-8", errors="replace"))
+    try:
+        return normalize_url(m.group(1)) if m else None
+    except NodePackError:
+        return None
+
+
+def health() -> Dict[str, Any]:
+    """Custom node packs ComfyUI could not load at its last start, with what is missing."""
+    failures = import_failures()
+    packs = []
+    for key, f in sorted(failures.items()):
+        folder = custom_nodes_dir() / f["folder"]
+        if not folder.is_dir():
+            continue
+        from app.services import engines
+
+        url = _remote_url(folder)
+        job = _jobs.get(url) if url else None
+        packs.append({
+            "folder": f["folder"], "url": url or "", "errors": f["errors"][:5], "modules": f["modules"],
+            "engine": (engines.for_folder(f["folder"]) or {}).get("title"),
+            "status": job["status"] if job else "broken",
+            "job": job and {k: v for k, v in job.items() if k != "log"} | {"log": job["log"][-12:]},
+        })
+    return {"log_available": comfy.log_path().is_file(), "packs": packs}
+
+
+def repair_folder(folder: str) -> Dict[str, Any]:
+    path = custom_nodes_dir() / folder
+    if not re.fullmatch(r"[\w.-]+", folder or "") or not path.is_dir():
+        raise NodePackError(f"Custom node folder '{folder}' not found.")
+    url = _remote_url(path)
+    if not url:
+        raise NodePackError(f"{folder} is not a git checkout; reinstall it from its repository.")
+    return install(url, name=folder)

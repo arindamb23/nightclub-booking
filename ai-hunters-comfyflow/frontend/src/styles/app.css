@@ -499,3 +499,4 @@ details.advanced summary { cursor: pointer; font-weight: 600; color: var(--text-
   .live-lbl { display: none; }
   .live-title { max-width: 190px; }
 }
+.mb-16 { margin-bottom: 16px; }

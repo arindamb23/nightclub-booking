@@ -1,0 +1,28 @@
+[INFO] ### ComfyUI Revision: 1 [88ab4a06] | Released on '2026-09-24'
+[INFO] ======================================== ComfyUI-nunchaku Initialization ========================================
+[INFO] Nunchaku version: Package 'nunchaku' not found.
+[INFO] ComfyUI-nunchaku version: 1.2.1
+[WARNING] Could not parse nunchaku version: Package 'nunchaku' not found.. Please ensure you have at least v1.0.0.
+[ERROR] Node `NunchakuFluxDiTLoader` import failed:
+Traceback (most recent call last):
+  File "D:\ai-hunters-comfyflow\comfyui\ComfyUI\custom_nodes\ComfyUI-nunchaku\__init__.py", line 82, in <module>
+    from .nodes.models.flux import NunchakuFluxDiTLoader
+  File "D:\ai-hunters-comfyflow\comfyui\ComfyUI\custom_nodes\ComfyUI-nunchaku\nodes\models\flux.py", line 16, in <module>
+    from nunchaku import NunchakuFluxTransformer2dModel
+ModuleNotFoundError: No module named 'nunchaku'
+[ERROR] Nodes `NunchakuFluxLoraLoader` and `NunchakuFluxLoraStack` import failed:
+Traceback (most recent call last):
+  File "D:\ai-hunters-comfyflow\comfyui\ComfyUI\custom_nodes\ComfyUI-nunchaku\__init__.py", line 96, in <module>
+    from .nodes.lora.flux import NunchakuFluxLoraLoader, NunchakuFluxLoraStack
+  File "D:\ai-hunters-comfyflow\comfyui\ComfyUI\custom_nodes\ComfyUI-nunchaku\nodes\lora\flux.py", line 9, in <module>
+    from nunchaku.lora.flux import to_diffusers
+ModuleNotFoundError: No module named 'nunchaku'
+'nunchaku_versions.json' not found. Node will start in minimal mode. Use 'update node' to fetch versions.
+[INFO] Traceback (most recent call last):
+[INFO]   File "D:\ai-hunters-comfyflow\comfyui\ComfyUI\nodes.py", line 2131, in load_custom_node
+[INFO]   File "D:\ai-hunters-comfyflow\comfyui\ComfyUI\custom_nodes\ComfyUI-Foo\__init__.py", line 3, in <module>
+[INFO] ImportError: cannot import name 'x' from 'y'
+[INFO] Cannot import D:\ai-hunters-comfyflow\comfyui\ComfyUI\custom_nodes\ComfyUI-Bar module for custom nodes: No module named 'sageattention'
+[rgthree-comfy] Loaded 48 fantastic nodes. 🎉
+[INFO]    0.1 seconds: D:\ai-hunters-comfyflow\comfyui\ComfyUI\custom_nodes\ComfyUI-nunchaku
+[INFO] Starting server

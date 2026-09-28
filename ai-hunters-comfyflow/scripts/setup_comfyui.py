@@ -122,7 +122,14 @@ def main() -> int:
     if failed:
         print("[WARN] These custom nodes could not be installed: " + ", ".join(failed))
 
-    # 6. Version limits: also replaces a newer version that is already installed
+    # 6. Compiled engines some node packs need (config/node-engines.json, e.g. nunchaku for ComfyUI-nunchaku)
+    backend_py = ROOT / "backend" / ".venv" / "Scripts" / "python.exe"
+    if not backend_py.exists():
+        backend_py = Path(sys.executable)
+    if run([backend_py, "-m", "app.services.engines"], cwd=ROOT / "backend") != 0:
+        print("[WARN] A node engine could not be installed; ComfyFlow offers Repair in Settings > Custom nodes health.")
+
+    # 7. Version limits: also replaces a newer version that is already installed
     if constraints.exists():
         say("Applying version limits from config\\python-constraints.txt")
         if run([comfy_py, "-m", "pip", "install", "-r", constraints]) != 0:

@@ -1,0 +1,14 @@
+{
+  "_comment": "Custom node packs whose Python engine is NOT a normal pip package (compiled CUDA wheels chosen per Python / PyTorch / platform). Installed automatically when the node pack is installed or repaired. 'wrong_pypi_below': a same-named but unrelated package on PyPI is removed when its version is lower than this.",
+  "engines": {
+    "comfyui-nunchaku": {
+      "module": "nunchaku",
+      "title": "Nunchaku engine (MIT Han Lab SVDQuant)",
+      "resolver": "nunchaku_cdn",
+      "versions_url": "https://nunchaku.tech/cdn/nunchaku_versions.json",
+      "sources": ["github", "huggingface", "modelscope"],
+      "wrong_pypi_below": "1.0",
+      "help": "https://nunchaku.tech/docs/ComfyUI-nunchaku/get_started/installation.html"
+    }
+  }
+}

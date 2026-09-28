@@ -49,6 +49,23 @@ def install(body: InstallIn):
         raise HTTPException(400, str(e))
 
 
+class RepairIn(BaseModel):
+    folder: str
+
+
+@router.get("/nodepacks/health")
+def health():
+    return nodepacks.health()
+
+
+@router.post("/nodepacks/repair")
+def repair(body: RepairIn):
+    try:
+        return nodepacks.repair_folder(body.folder)
+    except NodePackError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.get("/nodepacks/jobs")
 def jobs():
     return {"jobs": nodepacks.jobs(), "restart": nodepacks.restart_status()}

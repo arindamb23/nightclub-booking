@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.14
+# AI Hunters ComfyFlow v1.0.15
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -153,6 +153,14 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
   list in the folder ComfyUI reads and the **“Models needed for this run”** dialog asks for its download URL or
   file path, exactly like other missing models; the next run downloads it. When ComfyUI's list for that input is
   empty the folder is a guess you can change in the dialog – your choice is remembered for that loader input.
+* **Custom nodes that install but do not load** – ComfyFlow reads ComfyUI's console (`logs\comfyui.log`) and sees
+  which packs failed to import and why (e.g. *No module named 'nunchaku'*). They show as **Installed · failed to
+  load** with a **Repair** button (in the custom-nodes dialog and in *Settings → Custom nodes health*): requirements
+  are installed again, missing Python modules are added, and **compiled engines** listed in
+  `config\node-engines.json` are installed the right way – for **ComfyUI-nunchaku** the `nunchaku` wheel matching
+  ComfyUI's Python, PyTorch and platform, chosen from nunchaku.tech's list exactly like the pack's own installer
+  (`pip install nunchaku` would install an unrelated PyPI library; if it is there it is removed first). Setup.bat
+  installs these engines too. Then ComfyUI restarts.
 * **Known problems, fixed with one click** – when a run fails with an error listed in `config\known-fixes.json` (e.g.
   *'CLIPTextModel' object has no attribute 'text_model'* = `transformers` too new for HunyuanVideoWrapper,
   NumPy 1/2 conflicts, *No module named 'x'*), the failure dialog explains the cause and offers **Apply fix & run
@@ -245,7 +253,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 89 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 95 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 
@@ -287,6 +295,9 @@ cd backend
   `model` = checkpoint). Since v1.0.11 it is moved automatically; just run again.
 * **“Node 'workflow/NAME' not found”** – that is a ComfyUI *group node*, not a missing package; since v1.0.8 it is
   expanded automatically (open the workflow again or just run it).
+* **ComfyUI-nunchaku: “No module named 'nunchaku'”** – the node pack is installed but not its engine. Press
+  **Repair** in *Settings → Custom nodes health* (or run Setup.bat). No Nunchaku wheel exists for every PyTorch
+  version: if Repair reports that, it names the supported versions (see the Nunchaku installation guide).
 * **A custom node install fails** – open *Show install log* in the dialog. Common causes: no internet / GitHub blocked,
   a package that needs a C++ compiler or a specific CUDA build (install it by hand following its README), or a folder
   of the same name already in `ComfyUI\custom_nodes` that is not a git checkout (rename it and retry).

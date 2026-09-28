@@ -56,6 +56,17 @@ def match(text: str) -> Optional[Dict[str, Any]]:
         if "module" in values:
             values.setdefault("package", (fix.get("packages") or {}).get(values["module"], values["module"]))
         actions = [{**a, "args": [_fill(x, values) for x in a.get("args") or []]} for a in fix.get("actions") or []]
+        from app.services import engines
+
+        engine = engines.for_module(values.get("module", "")) if "module" in values else None
+        if engine:  # e.g. 'nunchaku': a compiled engine, never the same-named PyPI package
+            actions = [{"type": "engine", "args": [values["module"]]}]
+            title = engine.get("title", values["module"])
+            return {"id": f"engine-{values['module']}", "title": f"{title} is not installed",
+                    "explain": (f"The node needs {title}: a compiled engine built for your Python, PyTorch and GPU. It is "
+                                f"not the '{values['module']}' package on PyPI (that is an unrelated library). The fix "
+                                "installs the matching wheel into ComfyUI's Python and restarts ComfyUI."),
+                    "actions": actions, "restart": True, "values": values}
         return {"id": fix["id"], "title": _fill(fix.get("title", ""), values), "explain": _fill(fix.get("explain", ""), values),
                 "actions": actions, "restart": bool(fix.get("restart", True)), "values": values}
     return None
@@ -89,6 +100,17 @@ def _worker(job: Dict[str, Any], fix: Dict[str, Any]) -> None:
                     raise FixError("Invalid pip arguments in known-fixes.json.")
                 nodepacks._run(job, [nodepacks._python(), "-m", "pip", "install", "--disable-pip-version-check", *args],
                                publish=_publish)
+            elif action.get("type") == "engine":
+                from app.services import engines
+
+                engine = engines.for_module(action["args"][0])
+                if not engine:
+                    raise FixError(f"No engine is configured for '{action['args'][0]}'.")
+                try:
+                    engines.ensure(engine, None, lambda args: nodepacks._run(job, args, publish=_publish),
+                                   lambda msg: (job["log"].append(msg), _publish(job)))
+                except engines.EngineError as e:
+                    raise FixError(str(e)) from e
             elif action.get("type") == "update_node":
                 folder = nodepacks.custom_nodes_dir() / nodepacks.repo_folder(action["args"][0])
                 git = nodepacks._git()

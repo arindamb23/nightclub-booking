@@ -1,3 +1,4 @@
+import NodeHealth from '../components/NodeHealth.jsx'
 import { useCallback, useEffect, useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import { PageHeader, Spinner } from '../components/Common.jsx'
@@ -71,6 +72,7 @@ export default function Settings() {
         subtitle="Stored in the .env file next to Start-all.bat. Ports can only be changed in .env (restart with Stop-all.bat / Start-all.bat afterwards)."
         actions={<button className="btn btn-primary" onClick={save} disabled={busy === 'save'}>{busy === 'save' ? <Spinner /> : <Icon name="save" />}Save settings</button>}
       />
+      <div className="mb-16"><NodeHealth /></div>
       <div className="grid-2">
         <div className="card">
           <div className="card-head"><h3>ComfyUI</h3>
