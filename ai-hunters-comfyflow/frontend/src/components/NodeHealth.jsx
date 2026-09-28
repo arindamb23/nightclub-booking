@@ -5,6 +5,32 @@ import { api } from '../api.js'
 import { useEvent } from '../context/EventsContext.jsx'
 import { useMessages } from '../context/MessageContext.jsx'
 
+function ModuleRow({ r, onSaved }) {
+  const msg = useMessages()
+  const [value, setValue] = useState('')
+  const save = async () => {
+    try { await api.post('/api/nodepacks/module-package', { module: r.module, package: value.trim() }); onSaved() } catch (e) { msg.showError(e) }
+  }
+  if (r.package) {
+    return (
+      <div className="row small" style={{ gap: 8 }}>
+        <span className="chip mono">{r.module}</span><span className="muted">→</span>
+        <b className="mono">{r.package}</b><span className="muted">· {r.engine ? 'compiled engine, matched to your Python / PyTorch' : r.source}</span>
+      </div>
+    )
+  }
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <div className="row small" style={{ gap: 8 }}><span className="chip mono">{r.module}</span><span style={{ color: r.pending ? 'var(--text-2)' : 'var(--danger)' }}>{r.reason}</span></div>
+      <div className="row" style={{ gap: 8 }}>
+        <input className="input input-sm input-mono" style={{ maxWidth: 320 }} placeholder="pip package, e.g. insightface==0.7.3" value={value}
+          onChange={(e) => setValue(e.target.value)} aria-label={`Package for ${r.module}`} />
+        <button className="btn btn-sm" onClick={save} disabled={!value.trim()}><Icon name="save" size={13} />Save</button>
+      </div>
+    </div>
+  )
+}
+
 // Settings: custom node packs ComfyUI could not load at its last start (from its console log), with Repair.
 export default function NodeHealth() {
   const msg = useMessages()
@@ -43,8 +69,14 @@ export default function NodeHealth() {
                       {p.status === 'installed'
                         ? <span className="badge badge-accent"><span className="badge-dot" />Repaired · restart needed</span>
                         : p.status === 'error' ? <span className="badge badge-danger"><span className="badge-dot" />Repair failed</span>
-                          : <button className="btn btn-sm btn-primary" onClick={() => repair(p)} disabled={busy || !p.url}>{busy ? <Spinner size={13} /> : <Icon name="refresh" size={13} />}Repair</button>}
+                          : <button className="btn btn-sm btn-primary" onClick={() => repair(p)} disabled={busy || !p.url || p.resolved?.some((r) => !r.package && !r.pending)}
+                            title={p.resolved?.some((r) => !r.package && !r.pending) ? 'Enter the package name for each unresolved module first' : ''}>{busy ? <Spinner size={13} /> : <Icon name="refresh" size={13} />}Repair</button>}
                     </div>
+                    {p.resolved?.length > 0 && (
+                      <div className="stack mt-8" style={{ gap: 6 }}>
+                        {p.resolved.map((r) => <ModuleRow key={r.module} r={r} onSaved={load} />)}
+                      </div>
+                    )}
                     <pre className="nodepack-log">{(p.job?.log?.length ? p.job.log : p.errors).join('\n')}</pre>
                     {p.job?.error && <div className="small mt-8" style={{ color: 'var(--danger)' }}>{p.job.error}</div>}
                   </div>

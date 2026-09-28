@@ -236,6 +236,7 @@ _jobs: Dict[str, Dict[str, Any]] = {}  # url -> install job
 # ------------------------------------------------------------------ import failures (ComfyUI's console log)
 _CUSTOM_DIR = re.compile(r"custom_nodes[\\/]+(?P<folder>[^\\/\s\"']+)")
 _EXC_LINE = re.compile(r"^(?P<type>[A-Za-z_][\w.]*(?:Error|Exception))\b[:\s]*(?P<msg>.*)$")
+_IMPORT_LINE = re.compile(r"^(?:from\s+(?P<mod>[A-Za-z_][\w.]*)\s+import\s+(?P<names>[\w\s,()*]+)|import\s+(?P<mod2>[A-Za-z_][\w.]*))\s*$")
 _LEVEL_PREFIX = re.compile(r"^\[(?:INFO|WARNING|WARN|ERROR|DEBUG|CRITICAL)\]\s?")
 _NO_MODULE = re.compile(r"No module named '(?P<module>[^'.]+)")
 
@@ -258,13 +259,20 @@ def import_failures(log_text: Optional[str] = None) -> Dict[str, Dict[str, Any]]
         log_text = log_text[starts[-1]:]
     out: Dict[str, Dict[str, Any]] = {}
 
-    def add(folder: str, error: str) -> None:
-        entry = out.setdefault(folder.lower(), {"folder": folder, "errors": [], "modules": []})
+    def add(folder: str, error: str, block_lines: Optional[List[str]] = None) -> None:
+        entry = out.setdefault(folder.lower(), {"folder": folder, "errors": [], "modules": [], "imports": []})
         if error and error not in entry["errors"]:
             entry["errors"].append(error)
         m = _NO_MODULE.search(error or "")
         if m and m.group("module") not in entry["modules"]:
             entry["modules"].append(m.group("module"))
+        for line in block_lines or []:  # the failing import statements (to verify a package really provides them)
+            im = _IMPORT_LINE.match(line)
+            if im and not line.startswith("from ."):
+                imp = {"module": im.group("mod") or im.group("mod2"),
+                       "names": [n.strip().split(" as ")[0] for n in (im.group("names") or "").strip("()").split(",") if n.strip()]}
+                if imp not in entry["imports"]:
+                    entry["imports"].append(imp)
 
     lines = log_text.replace("\r\n", "\n").split("\n")
     block: Optional[List[str]] = None
@@ -284,7 +292,7 @@ def import_failures(log_text: Optional[str] = None) -> Dict[str, Dict[str, Any]]
             if m and not line.startswith("File "):
                 folders = [f.group("folder") for b in block for f in [_CUSTOM_DIR.search(b)] if f]
                 if folders:
-                    add(folders[0], line)  # the first custom_nodes frame is the pack being imported
+                    add(folders[0], line, block)  # the first custom_nodes frame is the pack being imported
                 block = None
             elif len(block) > 80:
                 block = None
@@ -456,9 +464,10 @@ def _install(job: Dict[str, Any]) -> None:
         _run(job, [git, "clone", "--depth", "1", url, str(target)])
     req = target / "requirements.txt"
     if req.is_file():
-        from app.services.fixes import constraint_args
+        from app.services.engines import torch_pin_args
 
-        _run(job, [_python(), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(req), *constraint_args()], cwd=target)
+        # the pack's requirements, without letting them replace ComfyUI's PyTorch
+        _run(job, [_python(), "-m", "pip", "install", "--disable-pip-version-check", "-r", str(req), *torch_pin_args()], cwd=target)
     if (target / "install.py").is_file():
         _run(job, [_python(), "install.py"], cwd=target)
     _install_dependencies(job, target)
@@ -466,31 +475,33 @@ def _install(job: Dict[str, Any]) -> None:
 
 
 def _install_dependencies(job: Dict[str, Any], target: Path) -> None:
-    """Engines that are not plain pip packages (config/node-engines.json) and Python modules ComfyUI's log says are
-    missing for this pack (repair of a pack that failed to load)."""
-    from app.services import engines, fixes
+    """Engines of the pack (config/node-engines.json) and the modules ComfyUI's log says are missing for it,
+    each resolved to the package that really provides it (pydeps). Unresolved modules stop with a clear message."""
+    from app.services import engines, pydeps
 
+    log = lambda msg: msg and (job["log"].append(msg), _publish(job))  # noqa: E731
+    run = lambda args: _run(job, args, cwd=target)  # noqa: E731
     engine = engines.for_folder(target.name)
-    log = lambda msg: (job["log"].append(msg), _publish(job))  # noqa: E731
-    if engine:
-        try:
-            engines.ensure(engine, target, lambda args: _run(job, args, cwd=target), log)
-        except engines.EngineError as e:
-            raise NodePackError(str(e)) from e
-    failure = import_failures().get(target.name.lower()) or {}
-    for module in failure.get("modules", []):
-        if engine and module == engine.get("module"):
-            continue
-        other = engines.for_module(module)
-        if other:
-            try:
-                engines.ensure(other, None, lambda args: _run(job, args, cwd=target), log)
-            except engines.EngineError as e:
-                raise NodePackError(str(e)) from e
-            continue
-        fix = fixes.match(f"No module named '{module}'")
-        package = (fix or {}).get("values", {}).get("package", module)
-        _run(job, [_python(), "-m", "pip", "install", "--disable-pip-version-check", package, *fixes.constraint_args()], cwd=target)
+    try:
+        if engine:
+            engines.ensure(engine, target, run, log)
+        failure = import_failures().get(target.name.lower()) or {}
+        unresolved = []
+        for module in failure.get("modules", []):
+            if engine and module == engine.get("module"):
+                continue
+            res = pydeps.resolve_module(module, target, failure.get("imports"))
+            if res.get("engine"):
+                engines.ensure(res["engine"], None, run, log)
+            elif res.get("package"):
+                log(f"'{module}' is provided by {res['package']} ({res['source']}).")
+                run([_python(), "-m", "pip", "install", "--disable-pip-version-check", *res["package"].split(), *engines.torch_pin_args()])
+            else:
+                unresolved.append(f"{module}: {res.get('reason')}")
+    except engines.EngineError as e:
+        raise NodePackError(str(e)) from e
+    if unresolved:
+        raise NodePackError("Could not tell which package to install for: " + " | ".join(unresolved))
 
 
 def install(url: str, class_types: Optional[List[str]] = None, name: str = "") -> Dict[str, Any]:
@@ -652,8 +663,15 @@ def health() -> Dict[str, Any]:
 
         url = _remote_url(folder)
         job = _jobs.get(url) if url else None
+        from app.services import pydeps
+
+        resolved = []
+        for mod in f["modules"]:
+            r = pydeps.resolve_module(mod, folder, f.get("imports"), check_pypi=False)
+            resolved.append({"module": mod, "package": r.get("package"), "source": r.get("source", ""),
+                             "reason": r.get("reason", ""), "engine": bool(r.get("engine")), "pending": bool(r.get("pending"))})
         packs.append({
-            "folder": f["folder"], "url": url or "", "errors": f["errors"][:5], "modules": f["modules"],
+            "folder": f["folder"], "url": url or "", "errors": f["errors"][:5], "modules": f["modules"], "resolved": resolved,
             "engine": (engines.for_folder(f["folder"]) or {}).get("title"),
             "status": job["status"] if job else "broken",
             "job": job and {k: v for k, v in job.items() if k != "log"} | {"log": job["log"][-12:]},

@@ -10,7 +10,7 @@ def test_known_errors_are_recognised():
     assert fix["id"] == "transformers-clip-text-model"
     assert fix["actions"] == [{"type": "pip", "args": ["transformers>=4.49,<5.6"]}] and fix["restart"]
     mod = fixes.match("SomeNode (ID 3) failed: ModuleNotFoundError No module named 'cv2'")
-    assert mod["title"].endswith("cv2") and mod["actions"][0]["args"] == ["opencv-python"]
+    assert mod["title"].endswith("cv2") and mod["actions"] == [{"type": "module", "args": ["cv2"]}]
     assert fixes.match("KSampler (ID 3) failed: out of memory") is None
 
 
@@ -40,9 +40,13 @@ def test_failed_run_offers_the_fix_and_applies_it(client, monkeypatch):
     commands = []
     monkeypatch.setattr(nodepacks, "_run", lambda job, args, cwd=None, timeout=1800, publish=None: commands.append(args))
     monkeypatch.setattr(nodepacks, "restart_comfyui", lambda wait=False: {"status": "done"})
+    from app.services import engines
+    monkeypatch.setattr(engines, "environment", lambda mods: {"pinned": {"torch": "2.8.0+cu128"}, "modules": {}})
     job = client.post(f"/api/runs/{done['id']}/fix").json()
     assert job["id"] == "transformers-clip-text-model"
     finished = wait_for(lambda: next((j for j in client.get("/api/fixes/jobs").json()["jobs"] if j["status"] in ("done", "error")), None))
     assert finished["status"] == "done", finished
-    assert commands[0][1:4] == ["-m", "pip", "install"] and commands[0][-1] == "transformers>=4.49,<5.6"
+    assert commands[0][1:4] == ["-m", "pip", "install"] and "transformers>=4.49,<5.6" in commands[0]
+    pins = open(commands[0][commands[0].index("-c") + 1], encoding="utf-8").read()
+    assert "torch==2.8.0+cu128" in pins
     assert client.post("/api/runs/nope_1/fix").status_code == 404

@@ -53,6 +53,27 @@ def base_python() -> str:
     return getattr(sys, "_base_executable", None) or sys.executable
 
 
+def pin_file(comfy_py: Path, constraints: Path) -> list:
+    """-c <file>: the installed torch / torchvision / torchaudio (so no requirements file can replace the CUDA build)
+    plus config/python-constraints.txt."""
+    code = ("import importlib.metadata as m\n"
+            "for n in ('torch','torchvision','torchaudio'):\n"
+            "    try: print(f'{n}=={m.version(n)}')\n"
+            "    except m.PackageNotFoundError: pass\n")
+    try:
+        lines = subprocess.run([str(comfy_py), "-c", code], capture_output=True, text=True, timeout=120).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        lines = []
+    if constraints.exists():
+        lines += [l for l in constraints.read_text(encoding="utf-8").splitlines() if l.strip() and not l.strip().startswith("#")]
+    if not lines:
+        return []
+    target = ROOT / "data" / "setup-constraints.txt"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return ["-c", target]
+
+
 def main() -> int:
     env = dotenv_values(ENV)
     comfy_dir = resolve(env.get("COMFYUI_DIR", ""), "comfyui/ComfyUI")
@@ -94,7 +115,7 @@ def main() -> int:
 
     # 4. ComfyUI requirements
     constraints = ROOT / "config" / "python-constraints.txt"
-    pin = ["-c", constraints] if constraints.exists() else []
+    pin = pin_file(comfy_py, constraints)
     if run([comfy_py, "-m", "pip", "install", "-r", comfy_dir / "requirements.txt", *pin]) != 0:
         print("[ERROR] Installing ComfyUI requirements failed.")
         return 1

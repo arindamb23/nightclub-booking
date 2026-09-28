@@ -1,0 +1,41 @@
+{
+  "_comment": "Import name -> pip package (or a list of equivalent packages; the first is the default). Used before looking at PyPI. A package from the node pack's own requirements.txt that is in the list wins (e.g. opencv-python-headless). Compiled engines are in node-engines.json.",
+  "cv2": [
+    "opencv-python",
+    "opencv-python-headless",
+    "opencv-contrib-python",
+    "opencv-contrib-python-headless"
+  ],
+  "PIL": [
+    "pillow",
+    "pillow-simd"
+  ],
+  "sklearn": "scikit-learn",
+  "skimage": "scikit-image",
+  "yaml": "pyyaml",
+  "Crypto": "pycryptodome",
+  "google": "protobuf",
+  "onnxruntime": [
+    "onnxruntime-gpu",
+    "onnxruntime"
+  ],
+  "bs4": "beautifulsoup4",
+  "dateutil": "python-dateutil",
+  "dotenv": "python-dotenv",
+  "fitz": "pymupdf",
+  "jwt": "pyjwt",
+  "git": "gitpython",
+  "magic": "python-magic",
+  "serial": "pyserial",
+  "attr": "attrs",
+  "lark": "lark",
+  "mediapipe": "mediapipe",
+  "piexif": "piexif",
+  "imageio_ffmpeg": "imageio-ffmpeg",
+  "llama_cpp": "llama-cpp-python",
+  "segment_anything": "segment-anything",
+  "clip": "openai-clip",
+  "open_clip": "open-clip-torch",
+  "rembg": "rembg",
+  "ultralytics": "ultralytics"
+}

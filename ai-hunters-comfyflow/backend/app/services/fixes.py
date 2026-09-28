@@ -53,8 +53,6 @@ def match(text: str) -> Optional[Dict[str, Any]]:
         if not m:
             continue
         values = {k: v for k, v in m.groupdict().items() if v}
-        if "module" in values:
-            values.setdefault("package", (fix.get("packages") or {}).get(values["module"], values["module"]))
         actions = [{**a, "args": [_fill(x, values) for x in a.get("args") or []]} for a in fix.get("actions") or []]
         from app.services import engines
 
@@ -95,11 +93,30 @@ def _worker(job: Dict[str, Any], fix: Dict[str, Any]) -> None:
     try:
         for action in fix["actions"]:
             if action.get("type") == "pip":
+                from app.services import engines
+
                 args = [a for a in action.get("args") or [] if a]
                 if not args or any(a.startswith("-") and a not in ("-U", "--upgrade") for a in args):
                     raise FixError("Invalid pip arguments in known-fixes.json.")
-                nodepacks._run(job, [nodepacks._python(), "-m", "pip", "install", "--disable-pip-version-check", *args],
+                pins = [a for a in engines.torch_pin_args()]  # PyTorch stays as it is
+                nodepacks._run(job, [nodepacks._python(), "-m", "pip", "install", "--disable-pip-version-check", *args, *pins],
                                publish=_publish)
+            elif action.get("type") == "module":
+                from app.services import engines, pydeps
+
+                res = pydeps.resolve_module(action["args"][0])
+                if res.get("engine"):
+                    try:
+                        engines.ensure(res["engine"], None, lambda a: nodepacks._run(job, a, publish=_publish),
+                                       lambda msg: msg and (job["log"].append(msg), _publish(job)))
+                    except engines.EngineError as e:
+                        raise FixError(str(e)) from e
+                elif res.get("package"):
+                    job["log"].append(f"'{res['module']}' is provided by {res['package']} ({res['source']}).")
+                    nodepacks._run(job, [nodepacks._python(), "-m", "pip", "install", "--disable-pip-version-check",
+                                         *res["package"].split(), *engines.torch_pin_args()], publish=_publish)
+                else:
+                    raise FixError(res.get("reason") or f"No package found for '{action['args'][0]}'.")
             elif action.get("type") == "engine":
                 from app.services import engines
 

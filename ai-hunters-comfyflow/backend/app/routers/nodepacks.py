@@ -53,6 +53,23 @@ class RepairIn(BaseModel):
     folder: str
 
 
+class ModulePackageIn(BaseModel):
+    module: str
+    package: str
+
+
+@router.post("/nodepacks/module-package")
+def module_package(body: ModulePackageIn):
+    """The user says which pip package provides a module ComfyFlow could not resolve."""
+    from app.services import pydeps
+
+    try:
+        pydeps.save_user_package(body.module, body.package)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
 @router.get("/nodepacks/health")
 def health():
     return nodepacks.health()

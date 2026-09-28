@@ -1,14 +1,39 @@
 {
-  "_comment": "Custom node packs whose Python engine is NOT a normal pip package (compiled CUDA wheels chosen per Python / PyTorch / platform). Installed automatically when the node pack is installed or repaired. 'wrong_pypi_below': a same-named but unrelated package on PyPI is removed when its version is lower than this.",
+  "_comment": "Python engines that are NOT a plain 'pip install <module>': compiled CUDA wheels per Python / PyTorch / CUDA / platform, or packages published under another name. Keys: a custom node folder (installed with that pack) or any name. Resolvers: versions_list (a JSON list with file/URL templates), github_release (the .whl assets of a GitHub project, matched by file name), pip_by_torch (a pip package, per OS, with a version range per PyTorch). Values may be {\"win\": ..., \"linux\": ...}. Every install pins the installed torch/torchvision/torchaudio.",
   "engines": {
     "comfyui-nunchaku": {
       "module": "nunchaku",
       "title": "Nunchaku engine (MIT Han Lab SVDQuant)",
-      "resolver": "nunchaku_cdn",
+      "resolver": "versions_list",
       "versions_url": "https://nunchaku.tech/cdn/nunchaku_versions.json",
+      "local_copy": "nunchaku_versions.json",
       "sources": ["github", "huggingface", "modelscope"],
       "wrong_pypi_below": "1.0",
       "help": "https://nunchaku.tech/docs/ComfyUI-nunchaku/get_started/installation.html"
+    },
+    "sageattention": {
+      "module": "sageattention",
+      "title": "SageAttention 2 (compiled CUDA kernels)",
+      "resolver": "github_release",
+      "repo": {"win": "woct0rdho/SageAttention", "linux": null},
+      "help": "https://github.com/thu-ml/SageAttention"
+    },
+    "flash_attn": {
+      "module": "flash_attn",
+      "distribution": "flash_attn",
+      "title": "FlashAttention 2 (compiled CUDA kernels)",
+      "resolver": "github_release",
+      "repo": {"win": "kingbri1/flash-attention", "linux": "Dao-AILab/flash-attention"},
+      "help": "https://github.com/Dao-AILab/flash-attention"
+    },
+    "triton": {
+      "module": "triton",
+      "distribution": {"win": "triton-windows", "linux": "triton"},
+      "title": "Triton (GPU compiler)",
+      "resolver": "pip_by_torch",
+      "package": {"win": "triton-windows", "linux": "triton"},
+      "by_torch": {"2.6": ">=3.2,<3.3", "2.7": ">=3.3,<3.4", "2.8": ">=3.4,<3.5", "2.9": ">=3.5,<3.6"},
+      "help": "https://github.com/woct0rdho/triton-windows"
     }
   }
 }

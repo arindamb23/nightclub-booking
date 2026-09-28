@@ -1,4 +1,4 @@
-# AI Hunters ComfyFlow v1.0.15
+# AI Hunters ComfyFlow v1.0.16
 
 **Import a ComfyUI workflow → it is converted to Python automatically → required models are downloaded
 into the right folders → run it → preview and download images and videos.**
@@ -161,6 +161,20 @@ Already have ComfyUI? Set `INSTALL_COMFYUI=false` and `COMFYUI_HOST` / `COMFYUI_
   ComfyUI's Python, PyTorch and platform, chosen from nunchaku.tech's list exactly like the pack's own installer
   (`pip install nunchaku` would install an unrelated PyPI library; if it is there it is removed first). Setup.bat
   installs these engines too. Then ComfyUI restarts.
+* **Missing Python modules – the right package, verified** (Repair, known fixes): a missing import is resolved in
+  this order – your earlier answer (`data\module_packages.json`) · an engine in `config\node-engines.json` · **the node
+  pack's own requirements.txt** (also under another name, e.g. `opencv-python-headless` for `cv2`) ·
+  `config\module-packages.json` · the same-named PyPI package **only after downloading its wheel and checking it
+  contains that module and the exact imports from the traceback** (`from nunchaku.lora.flux import to_diffusers`) –
+  so an unrelated library with the same name is never installed. Nothing verified → Settings asks you for the pip
+  package name (remembered). Every install pins the installed **torch / torchvision / torchaudio**, so no package
+  can replace your CUDA build of PyTorch (Setup.bat too).
+* **Compiled engines – one general wheel finder** (`config\node-engines.json`): `versions_list` (a published list,
+  e.g. Nunchaku), `github_release` (the `.whl` files of a GitHub project, chosen by parsing their names: Python tag
+  incl. abi3, platform, PyTorch version, CUDA version (never newer than PyTorch's), C++ ABI on Linux) and
+  `pip_by_torch` (a package per OS with a version range per PyTorch). Included: **Nunchaku**, **SageAttention 2**
+  (Windows wheels), **FlashAttention 2** (Windows and Linux wheels), **Triton** (`triton-windows` on Windows). A new
+  engine is a config entry, no code.
 * **Known problems, fixed with one click** – when a run fails with an error listed in `config\known-fixes.json` (e.g.
   *'CLIPTextModel' object has no attribute 'text_model'* = `transformers` too new for HunyuanVideoWrapper,
   NumPy 1/2 conflicts, *No module named 'x'*), the failure dialog explains the cause and offers **Apply fix & run
@@ -253,7 +267,7 @@ ai-hunters-comfyflow/
 
 ```
 cd backend
-.venv\Scripts\python -m pytest            # 95 tests, uses tools/fake_comfyui.py (no GPU needed)
+.venv\Scripts\python -m pytest            # 105 tests, uses tools/fake_comfyui.py (no GPU needed)
 .venv\Scripts\python -m tools.fake_comfyui --port 8188   # demo the UI without a GPU
 ```
 
